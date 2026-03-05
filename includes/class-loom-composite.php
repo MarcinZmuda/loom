@@ -93,19 +93,24 @@ class Loom_Composite {
 			$cluster = 0.0;
 		}
 
-		// 6. Link velocity (0.0 – 1.0)  -  pages with few links relative to age need boost.
+		// 6. Link velocity (0.0 – 1.0) — pages with few links relative to age need boost.
 		// Unlike orphan_boost (binary: has/hasn't links), this measures RATE:
 		// old page with few links = high need, new page with few links = normal.
-		$last_scanned = $target['last_scanned'] ?? null;
-		$age_days = $last_scanned ? max( 1, ( time() - strtotime( $last_scanned ) ) / 86400 ) : 30;
-		$links_per_month = $incoming > 0 ? ( $incoming / max( 1, $age_days / 30 ) ) : 0;
+		// Uses actual post_date (publication date), NOT last_scanned (which resets on every scan).
+		$tgt_post = get_post( intval( $target['post_id'] ?? 0 ) );
+		$post_date = $tgt_post ? $tgt_post->post_date : null;
+		$age_days  = $post_date ? max( 1, ( time() - strtotime( $post_date ) ) / 86400 ) : 90;
+		$age_months = max( 1, $age_days / 30 );
+		$links_per_month = $incoming / $age_months;
 
 		if ( $incoming === 0 ) {
-			$velocity = 0.8; // No links at all  -  but not 1.0 (orphan_boost handles that).
-		} elseif ( $links_per_month < 0.5 ) {
-			$velocity = 0.6; // Less than 1 link every 2 months  -  stagnant.
+			$velocity = 0.8; // No links at all — but not 1.0 (orphan_boost handles that).
+		} elseif ( $age_days > 180 && $links_per_month < 0.5 ) {
+			$velocity = 0.7; // 6+ months old, less than 1 link every 2 months — stagnant.
+		} elseif ( $age_days > 90 && $links_per_month < 1.0 ) {
+			$velocity = 0.5; // 3+ months old, ~1 link per month — slow.
 		} elseif ( $links_per_month < 1.0 ) {
-			$velocity = 0.3; // ~1 link per month  -  acceptable.
+			$velocity = 0.2; // Newer post, still low — slight boost.
 		} else {
 			$velocity = 0.0; // Growing healthily.
 		}
