@@ -620,10 +620,15 @@
 	/* =======================================================================
 	   EMBEDDINGS: Batch Generate
 	   ======================================================================= */
+	var loomEmbTotal = 0;
+
 	$(document).on('click', '#loom-generate-embeddings', function() {
 		var $btn = $(this);
 		$btn.prop('disabled', true);
 		$('#loom-emb-progress').show();
+		// Extract total from button text, e.g. "Generuj embeddingi (66)"
+		var match = $btn.text().match(/\((\d+)\)/);
+		loomEmbTotal = match ? parseInt(match[1]) : 0;
 		loomGenEmb();
 	});
 
@@ -635,26 +640,34 @@
 				action: 'loom_generate_embeddings',
 				nonce: loom_ajax.nonce
 			},
+			timeout: 60000, // 60s timeout for slow API.
 			success: function(res) {
 				if (res.success) {
 					var d = res.data;
+					var done = loomEmbTotal > 0 ? loomEmbTotal - d.remaining : 0;
+					var pct = loomEmbTotal > 0 ? Math.round((done / loomEmbTotal) * 100) : 0;
+
+					$('#loom-emb-fill').css('width', pct + '%');
 					$('#loom-emb-text').text(
-						loom_ajax.i18n.generating + ' Pozostało: ' + d.remaining
+						'Generowanie embeddingów... ' + done + '/' + loomEmbTotal +
+						(d.error ? ' ⚠️ ' + d.error : '')
 					);
 
 					if (d.status === 'next') {
 						loomGenEmb();
 					} else {
-						$('#loom-emb-text').text('✅ ' + loom_ajax.i18n.done);
+						$('#loom-emb-text').text('✅ Gotowe! Wygenerowano embeddingi.');
 						$('#loom-emb-fill').css('width', '100%');
 						setTimeout(function() { location.reload(); }, 1500);
 					}
 				} else {
-					$('#loom-emb-text').text('❌ ' + (res.data || loom_ajax.i18n.error));
+					$('#loom-emb-text').text('❌ ' + (res.data || 'Błąd API'));
+					$('#loom-generate-embeddings').prop('disabled', false);
 				}
 			},
-			error: function() {
-				$('#loom-emb-text').text('❌ ' + loom_ajax.i18n.error);
+			error: function(xhr) {
+				$('#loom-emb-text').text('❌ Błąd połączenia (timeout?). Kliknij ponownie.');
+				$('#loom-generate-embeddings').prop('disabled', false);
 			}
 		});
 	}
