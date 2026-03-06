@@ -188,7 +188,11 @@ class Loom_OpenAI {
 
 		global $wpdb;
 		$table = Loom_DB::index_table();
-		$batch = 10;
+		$batch = 5; // Reduced from 10 — safer for timeout.
+
+		$total_missing = (int) $wpdb->get_var(
+			"SELECT COUNT(*) FROM {$table} WHERE embedding IS NULL AND clean_text IS NOT NULL AND clean_text != ''"
+		);
 
 		$posts = $wpdb->get_results( $wpdb->prepare(
 			"SELECT post_id, post_title, clean_text FROM {$table}
@@ -197,35 +201,49 @@ class Loom_OpenAI {
 			$batch
 		), ARRAY_A );
 
-		$remaining = (int) $wpdb->get_var(
-			"SELECT COUNT(*) FROM {$table} WHERE embedding IS NULL AND clean_text IS NOT NULL AND clean_text != ''"
-		);
+		if ( empty( $posts ) ) {
+			wp_send_json_success( array(
+				'generated' => 0,
+				'remaining' => 0,
+				'status'    => 'complete',
+			) );
+		}
 
-		$generated = 0;
+		$generated   = 0;
+		$last_error  = '';
+
 		foreach ( $posts as $p ) {
-			// R3: Repeat title 3x to strengthen topic signal in embedding.
-			// Title is 5-10 words vs 500+ in content  -  without repetition it gets drowned out.
 			$title = $p['post_title'];
 			$input = $title . ' | ' . $title . ' | ' . $title
 			       . ' | ' . mb_substr( $p['clean_text'], 0, 2500 );
 			$vector = self::get_embedding( $input, $api_key );
 
-			if ( ! is_wp_error( $vector ) ) {
-				$wpdb->update( $table, array(
-					'embedding'       => wp_json_encode( $vector ),
-					'embedding_model' => self::EMBED_MODEL,
-					'last_embedding'  => current_time( 'mysql' ),
-				), array( 'post_id' => $p['post_id'] ) );
-				$generated++;
+			if ( is_wp_error( $vector ) ) {
+				$last_error = $vector->get_error_message();
+				break; // Stop batch on first error — don't burn API calls.
 			}
+
+			$wpdb->update( $table, array(
+				'embedding'       => wp_json_encode( $vector ),
+				'embedding_model' => self::EMBED_MODEL,
+				'last_embedding'  => current_time( 'mysql' ),
+			), array( 'post_id' => $p['post_id'] ) );
+			$generated++;
 		}
 
-		$still_remaining = $remaining - $generated;
+		$still_remaining = $total_missing - $generated;
+
+		// If zero generated AND we had an error → report it, don't loop.
+		if ( $generated === 0 && ! empty( $last_error ) ) {
+			wp_send_json_error( $last_error );
+		}
 
 		wp_send_json_success( array(
 			'generated' => $generated,
 			'remaining' => max( 0, $still_remaining ),
+			'total'     => $total_missing,
 			'status'    => $still_remaining <= 0 ? 'complete' : 'next',
+			'error'     => $last_error, // Partial error (some succeeded, then error).
 		) );
 	}
 }
