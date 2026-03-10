@@ -15,8 +15,9 @@ class Loom_Dashboard {
 
 		$nodes_raw = $wpdb->get_results(
 			"SELECT post_id, post_title, post_type, incoming_links_count, outgoing_links_count,
-			        is_orphan, site_tier, internal_pagerank, is_dead_end, is_bridge,
-			        is_money_page, is_striking_distance, gsc_position
+			        is_orphan, site_tier, cluster_id, internal_pagerank, is_dead_end, is_bridge,
+			        is_money_page, is_striking_distance,
+			        gsc_position, gsc_impressions, gsc_clicks, gsc_ctr, gsc_top_queries
 			 FROM {$idx} ORDER BY incoming_links_count DESC LIMIT 100", ARRAY_A
 		);
 		$node_ids = wp_list_pluck( $nodes_raw, 'post_id' );
@@ -31,17 +32,47 @@ class Loom_Dashboard {
 				'tier' => intval( $n['site_tier'] ?? 3 ), 'pr' => floatval( $n['internal_pagerank'] ?? 0 ),
 				'dead_end' => intval( $n['is_dead_end'] ?? 0 ), 'bridge' => intval( $n['is_bridge'] ?? 0 ),
 				'money' => intval( $n['is_money_page'] ?? 0 ), 'striking' => intval( $n['is_striking_distance'] ?? 0 ),
+				'cluster' => $n['cluster_id'] ?? null,
+				'gsc_pos' => floatval( $n['gsc_position'] ?? 0 ),
+				'gsc_impr' => intval( $n['gsc_impressions'] ?? 0 ),
+				'gsc_clicks' => intval( $n['gsc_clicks'] ?? 0 ),
+				'gsc_ctr' => floatval( $n['gsc_ctr'] ?? 0 ),
+				'queries' => json_decode( $n['gsc_top_queries'] ?? '[]', true ) ?: array(),
+				'primary_kw' => '',
 			);
 		}
 
+		// Extract primary keyword per node.
+		foreach ( $nodes as &$nd ) {
+			$kw_row = Loom_DB::get_index_row( $nd['id'] );
+			if ( $kw_row && ! empty( $kw_row['focus_keywords'] ) ) {
+				$kws = json_decode( $kw_row['focus_keywords'], true );
+				if ( is_array( $kws ) ) {
+					foreach ( $kws as $kw ) {
+						if ( ( $kw['type'] ?? '' ) === 'primary' ) { $nd['primary_kw'] = $kw['phrase'] ?? ''; break; }
+					}
+					if ( empty( $nd['primary_kw'] ) && ! empty( $kws[0]['phrase'] ) ) {
+						$nd['primary_kw'] = $kws[0]['phrase'];
+					}
+				}
+			}
+		}
+		unset( $nd );
+
 		$ids_str = implode( ',', array_map( 'intval', $node_ids ) );
 		$edges_raw = $wpdb->get_results(
-			"SELECT source_post_id, target_post_id, is_plugin_generated FROM {$lnk}
+			"SELECT source_post_id, target_post_id, anchor_text, link_position, is_plugin_generated FROM {$lnk}
 			 WHERE source_post_id IN ({$ids_str}) AND target_post_id IN ({$ids_str}) AND target_post_id > 0", ARRAY_A
 		);
 		$edges = array();
 		foreach ( $edges_raw as $e ) {
-			$edges[] = array( 'from' => intval( $e['source_post_id'] ), 'to' => intval( $e['target_post_id'] ), 'loom' => intval( $e['is_plugin_generated'] ) );
+			$edges[] = array(
+				'from'   => intval( $e['source_post_id'] ),
+				'to'     => intval( $e['target_post_id'] ),
+				'loom'   => intval( $e['is_plugin_generated'] ),
+				'anchor' => $e['anchor_text'] ?? '',
+				'pos'    => $e['link_position'] ?? 'middle',
+			);
 		}
 		wp_send_json_success( array( 'nodes' => $nodes, 'edges' => $edges ) );
 	}
@@ -96,7 +127,7 @@ class Loom_Dashboard {
 				'overview' => array( '📊 ' . __( 'Przegląd', 'loom' ), __( 'Podsumowanie stanu linkowania wewnętrznego: metryki, equity, szybkie akcje.', 'loom' ) ),
 				'money'    => array( '💰 Money Pages', __( 'Strony konwersji (usługi, produkty). Monitoruj cel linkowania, anchor diversity, pozycję w Google.', 'loom' ) ),
 				'striking' => array( '🎯 Striking', __( 'Strony na pozycji 5-20 w Google. Jeden link wewnętrzny może przesunąć je na stronę 1.', 'loom' ) ),
-				'graph'    => array( '🕸️ Graf', __( 'Wizualizacja grafu linków wewnętrznych: pierścienie, macierz, lista połączeń.', 'loom' ) ),
+				'graph'    => array( '🕸️ Graf', __( 'Wizualizacja grafu linków wewnętrznych: pierścienie, scatter, keywords, anchory.', 'loom' ) ),
 				'posts'    => array( '📋 Posty', __( 'Tabela wszystkich stron z metrykami IN/OUT, statusem, filtrami.', 'loom' ) ),
 				'settings' => array( '⚙️ ' . __( 'Ustawienia', 'loom' ), __( 'Wagi scoringu, klucze API, GSC, zarządzanie danymi.', 'loom' ) ),
 			);
@@ -319,9 +350,11 @@ class Loom_Dashboard {
 				<h2>🕸️ <?php esc_html_e( 'Mapa powiązań', 'loom' ); ?></h2>
 				<div style="display:flex;gap:8px;align-items:center">
 					<div class="loom-graph-views">
-						<button class="loom-btn loom-btn-sm loom-graph-view-btn active" data-view="rings" title="<?php esc_attr_e( 'Koncentryczne ringi wg hierarchii. Kliknij node = pokaż połączenia. Przeciągnij = przesuń.', 'loom' ); ?>">🎯 <?php esc_html_e( 'Pierścienie', 'loom' ); ?></button>
-						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="table" title="<?php esc_attr_e( 'Lista stron z panelem połączeń. Kliknij stronę = zobacz linki IN i OUT.', 'loom' ); ?>">📋 <?php esc_html_e( 'Lista', 'loom' ); ?></button>
-						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="matrix" title="<?php esc_attr_e( 'Macierz NxN. Wiersz = źródło, kolumna = cel. Teal = link LOOM, niebieski = ręczny.', 'loom' ); ?>">📊 <?php esc_html_e( 'Macierz', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn active" data-view="rings" title="<?php esc_attr_e( 'Struktura hierarchiczna. Kliknij = połączenia, przeciągnij = przesuń.', 'loom' ); ?>">🎯 <?php esc_html_e( 'Pierścienie', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="table" title="<?php esc_attr_e( 'Lista stron z panelem połączeń IN/OUT.', 'loom' ); ?>">📋 <?php esc_html_e( 'Lista', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="bubble" title="<?php esc_attr_e( 'X=IN, Y=OUT, rozmiar=PageRank. Orphany i huby widoczne natychmiast.', 'loom' ); ?>">🫧 Scatter</button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="keywords" title="<?php esc_attr_e( 'Zapytania z Google Search Console. Rozmiar=impressions. Użyj jako anchor text.', 'loom' ); ?>">🔑 Keywords</button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="anchors" title="<?php esc_attr_e( 'Profil anchorów per strona: exact/partial/contextual/generic %, health score.', 'loom' ); ?>">🔗 <?php esc_html_e( 'Anchory', 'loom' ); ?></button>
 					</div>
 					<button class="loom-btn loom-btn-sm loom-btn-outline" id="loom-recalc-graph">🔄</button>
 				</div>
@@ -338,9 +371,23 @@ class Loom_Dashboard {
 					<div id="loom-table-detail" style="flex:1;min-width:280px"></div>
 				</div>
 			</div>
-			<!-- Matrix view -->
-			<div id="loom-view-matrix" class="loom-graph-panel" style="display:none">
-				<div id="loom-matrix-container" style="overflow-x:auto;padding:16px"></div>
+			<!-- Bubble Scatter view -->
+			<div id="loom-view-bubble" class="loom-graph-panel" style="display:none">
+				<div id="loom-bubble-container" style="padding:16px"></div>
+			</div>
+			<!-- Keywords view -->
+			<div id="loom-view-keywords" class="loom-graph-panel" style="display:none">
+				<div id="loom-keywords-container" style="display:flex;gap:16px;padding:16px;min-height:420px">
+					<div id="loom-kw-pages" style="flex:0 0 200px;max-height:440px;overflow-y:auto"></div>
+					<div id="loom-kw-cloud" style="flex:1;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start"></div>
+				</div>
+			</div>
+			<!-- Anchor Explorer view -->
+			<div id="loom-view-anchors" class="loom-graph-panel" style="display:none">
+				<div id="loom-anchors-container" style="display:flex;gap:16px;padding:16px;min-height:420px">
+					<div id="loom-anchor-pages" style="flex:0 0 200px;max-height:440px;overflow-y:auto"></div>
+					<div id="loom-anchor-detail" style="flex:1"></div>
+				</div>
 			</div>
 		</div>
 

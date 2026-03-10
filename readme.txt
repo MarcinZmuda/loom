@@ -17,7 +17,7 @@ LOOM analyzes your content with AI and suggests optimal internal links. Click "P
 **Core:**
 
 * Semantic analysis via OpenAI embeddings (text-embedding-3-small, 512D)
-* 9-dimensional composite scoring (semantic, orphan, depth, tier, cluster, velocity, graph, money page, GSC)
+* 11-dimensional composite scoring (semantic, orphan, depth, tier, cluster, velocity, graph, money page, GSC, topical authority, placement quality)
 * GPT-4o-mini with Structured Outputs for precise link suggestions
 * Internal PageRank computation with bridge and dead-end detection
 * Two-stage similarity search (64D pre-filter, 512D dot product)
@@ -79,24 +79,51 @@ No. Zero frontend scripts. Admin panel only.
 == Changelog ==
 
 = 2.3.0 =
-* Paragraph-level intent matching (5 paragraph embeddings per article)
-* Topical authority dimension (cluster links, PR ratio, keyword depth)
-* Anchor diversity control for all targets (exact/partial/contextual/generic %)
-* Placement quality dimension (Reasonable Surfer in scoring)
-* 11-dimensional composite scoring with weight sliders
 
-= 2.3.0 =
-* Paragraph-level intent matching (5 paragraph embeddings per request)
-* Topical authority dimension (cluster links + relative PageRank + keyword depth)
-* Placement quality dimension (Reasonable Surfer at scoring level)
-* Anchor diversity control for ALL targets (exact/partial/contextual/generic profile)
-* 11-dimensional composite scoring (was 9)
-* System prompt: paragraph placement hints + anchor diversity rules
+**New features:**
+* Paragraph-level intent matching — 5 paragraph embeddings per article, each target matched to best paragraph
+* Topical authority dimension (#10) — cluster links + relative PageRank + keyword depth
+* Placement quality dimension (#11) — Reasonable Surfer at scoring level, not just prompt
+* Anchor diversity control for ALL targets — exact/partial/contextual/generic % profiling in prompts
+* 11-dimensional composite scoring with configurable weight sliders (was 9)
+* Batch embedding API — 1 call for 5 paragraphs instead of 5 separate calls
+* English translation (en_US) — 238 strings, .po + .mo included
+
+**Graph visualization — 5 views:**
+* Removed force-directed spaghetti graph and adjacency matrix
+* New: Concentric Rings view — nodes by tier, click to show connections, drag to reposition
+* New: List + Panel view — click page to see all IN/OUT links with LOOM badges
+* New: Bubble Scatter view — X=IN, Y=OUT, size=PageRank, color=cluster. Orphan/hub zones highlighted
+* New: Keyword Galaxy view — GSC queries as tag cloud, size=impressions, color=position. Filter per page. Hover = "use as anchor text"
+* New: Anchor Explorer view — per-page anchor profile: exact/partial/contextual/generic %, health score 0-100, over-optimization warnings, expandable source list with link position
+* Pulse animation on selected node, hover tooltips, double-click to reset
+
+**Bug fixes:**
+* Fixed embedding generation infinite loop — error now reported instead of silent retry
+* Fixed Auto-Podlinkuj using different embedding formula (missing 3x title)
+* Fixed remove_all_loom_links re-adding save_post hook with wrong priority (10→20) and args (2→3)
+* Fixed re-scan deleting LOOM-generated links (now preserves is_plugin_generated=1)
+* Fixed insert_link() always linking first occurrence — now uses paragraph_number hint
+* Fixed money_pages_health missing GSC columns (gsc_position, gsc_impressions, gsc_ctr)
+* Fixed the_content crash killing entire scan batch — now try/catch with fallback
+* Fixed GSC URL double encoding — normalize with rtrim/trim
+* Fixed JS syntax error (missing closing brace for canvas block) breaking all JS on onboarding
+
+**Performance:**
+* Eliminated N+1 queries in composite scoring: batch prefetch for get_post (15→0), cluster links (15→1), pillar check (15→1)
+* Dashboard stats: 16 separate queries → 3 aggregated queries
+* Settings static cache — loaded once per request instead of 20+ times
+* Link velocity dimension now uses post_date (publication) instead of last_scanned
+
+**UI improvements:**
+* 34 tooltips across entire dashboard — hover any metric, header, button or badge for explanation
+* Cursor: help on all tooltip-enabled elements with subtle teal hover highlight
+* Progress bar for embedding generation shows X/Y instead of "Pozostało: 66"
+* Error messages shown on embedding failure instead of infinite spinner
 
 = 2.2.0 =
 * Google Search Console integration (Service Account)
 * Money page system with anchor distribution monitoring
-* Force-directed graph visualization
 * 6-tab dashboard
 * One-click removal of all LOOM links
 * Internal PageRank, betweenness, dead-end detection
@@ -107,12 +134,4 @@ No. Zero frontend scripts. Admin panel only.
 == Upgrade Notice ==
 
 = 2.3.0 =
-* Paragraph-level intent matching (5 paragraph embeddings per request)
-* Topical authority dimension (cluster links + relative PageRank + keyword depth)
-* Placement quality dimension (Reasonable Surfer at scoring level)
-* Anchor diversity control for ALL targets (exact/partial/contextual/generic profile)
-* 11-dimensional composite scoring (was 9)
-* System prompt: paragraph placement hints + anchor diversity rules
-
-= 2.2.0 =
-Major release with GSC, graph engine, 11-dimensional scoring.
+Major update: 11-dimensional scoring, paragraph-level matching, 5 graph views (rings, list, scatter, keyword galaxy, anchor explorer), 10 bug fixes, 34 UI tooltips, English translation. Recommended for all users.

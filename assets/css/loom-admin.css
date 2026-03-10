@@ -250,6 +250,14 @@
   .loom-metrics { grid-template-columns:repeat(3,1fr); }
   #loom-link-map { height:280px; }
   .loom-grid-3 { grid-template-columns:1fr; }
+  .loom-graph-views { flex-wrap:wrap; gap:4px; }
+  .loom-graph-views .loom-btn-sm { font-size:10px; padding:4px 8px; }
+  #loom-view-table > div,
+  #loom-keywords-container,
+  #loom-anchors-container { flex-direction:column !important; }
+  #loom-table-list,
+  #loom-kw-pages,
+  #loom-anchor-pages { flex:none !important; max-height:200px !important; }
 }
 
 /* ── Animation ── */

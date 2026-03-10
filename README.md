@@ -6,7 +6,7 @@
     <source media="(prefers-color-scheme: light)" srcset="assets/img/logo-wide.png">
     <img src="assets/img/logo-gh.png" alt="LOOM" width="400">
   </picture><br><br>
-  <strong>v2.3.0</strong> · 32 files · 7,349 lines · Zero external PHP dependencies<br>
+  <strong>v2.3.0</strong> · 34 files · 8,142 lines · Zero external PHP dependencies<br>
   WordPress 6.0+ · PHP 8.0+ · OpenAI API · Google Search Console (optional)<br>
   <br>
   Created by <strong><a href="https://marcinzmuda.com">Marcin Żmuda</a></strong>
@@ -397,37 +397,42 @@ Per-post panel below the editor:
 
 ```
 loom/
-├── loom.php                      94 ln   Entry point, constants, 19 AJAX registrations
-├── uninstall.php                 33 ln   Clean removal of all plugin data
-├── readme.txt                            WordPress.org plugin header
-├── README.md                             This documentation
+├── loom.php                       102 ln  Entry point, constants, 19 AJAX registrations
+├── uninstall.php                   33 ln  Clean removal of all plugin data
+├── readme.txt                             WordPress.org plugin header
+├── README.md                              This documentation
 │
 ├── assets/
-│   ├── css/loom-admin.css       276 ln   Design system (DM Sans, teal palette)
-│   └── js/loom-admin.js       1098 ln   Scan, suggestions, graph, sliders, GSC
+│   ├── css/loom-admin.css         282 ln  Design system (DM Sans, teal palette, tooltip styles)
+│   ├── js/loom-admin.js          1486 ln  Scan, suggestions, 5 graph views, sliders, GSC
+│   └── img/                               Logos (square, wide, GitHub, icon-20)
 │
 ├── admin/
-│   ├── class-loom-admin.php     113 ln   Menu, assets, orphan notice
-│   ├── class-loom-dashboard.php 460 ln   6-tab dashboard
-│   ├── class-loom-metabox.php   195 ln   Per-post panel (GSC, keywords, anchors)
-│   ├── class-loom-bulk.php      126 ln   Multi-post management
-│   ├── class-loom-settings.php  324 ln   API keys, GSC connect, weights, danger zone
-│   └── class-loom-onboarding.php 19 ln   Placeholder
+│   ├── class-loom-admin.php       111 ln  Menu, assets, orphan notice
+│   ├── class-loom-dashboard.php   524 ln  6-tab dashboard with 34 tooltips, 5 graph views
+│   ├── class-loom-metabox.php     195 ln  Per-post panel (GSC, keywords, anchors)
+│   ├── class-loom-bulk.php        126 ln  Multi-post management
+│   ├── class-loom-settings.php    324 ln  API keys, GSC connect, weights, danger zone
+│   └── class-loom-onboarding.php   19 ln  Placeholder
 │
-└── includes/
-    ├── class-loom-activator.php 178 ln   Tables, defaults, upgrade migration
-    ├── class-loom-db.php        444 ln   All DB operations (28 methods)
-    ├── class-loom-scanner.php   215 ln   Content crawl, <a> parsing
-    ├── class-loom-openai.php    231 ln   Embeddings + chat with retry
-    ├── class-loom-similarity.php 240 ln  Two-stage 64D->512D search
-    ├── class-loom-graph.php     589 ln   PageRank, betweenness, components
-    ├── class-loom-gsc.php       603 ln   Service Account JWT auth + sync + scoring
-    ├── class-loom-keywords.php  455 ln   5-layer extraction
-    ├── class-loom-composite.php 398 ln   11-dimensional scoring with topical authority
-    ├── class-loom-suggester.php 604 ln   System prompt, paragraph embeddings, user prompt, JSON schema
-    ├── class-loom-analyzer.php   79 ln   Reasonable Surfer + anchor mismatch
-    ├── class-loom-linker.php    408 ln   Link insertion + removal
-    └── class-loom-site-analysis.php 161 ln  Click depth, cannibalization, rejections
+├── includes/
+│   ├── class-loom-activator.php   191 ln  Tables, defaults, upgrade migration
+│   ├── class-loom-db.php          443 ln  DB operations (aggregated stats, settings cache)
+│   ├── class-loom-scanner.php     221 ln  Content crawl, <a> parsing, try/catch safety
+│   ├── class-loom-openai.php      292 ln  Embeddings (single + batch) + chat with retry
+│   ├── class-loom-similarity.php  240 ln  Two-stage 64D→512D search
+│   ├── class-loom-graph.php       589 ln  PageRank, betweenness, components
+│   ├── class-loom-gsc.php         605 ln  Service Account JWT auth + sync + scoring
+│   ├── class-loom-keywords.php    455 ln  5-layer extraction
+│   ├── class-loom-composite.php   469 ln  11-dimensional scoring, batch prefetch, topical authority
+│   ├── class-loom-suggester.php   610 ln  System prompt, batch paragraph embeddings, JSON schema
+│   ├── class-loom-analyzer.php     79 ln  Reasonable Surfer + anchor mismatch
+│   ├── class-loom-linker.php      585 ln  Link insertion (paragraph-aware) + removal
+│   └── class-loom-site-analysis.php 161 ln Click depth, cannibalization, rejections
+│
+└── languages/
+    ├── loom-en_US.po             238 strings  English translation
+    └── loom-en_US.mo                          Compiled binary
 ```
 
 ---
@@ -499,6 +504,68 @@ This plugin connects to:
 **OpenAI API** (`api.openai.com`)  -  for embeddings and link suggestions. Your post content is sent when you click "Podlinkuj". [Privacy Policy](https://openai.com/privacy) · [Terms](https://openai.com/terms)
 
 **Google Search Console API** (`googleapis.com`)  -  optional, for search performance data. Only page URLs, positions, and queries are read. Nothing is modified. [Terms](https://developers.google.com/terms)
+
+---
+
+## Changelog
+
+### 2.3.0
+
+**New scoring dimensions:**
+- **Topical authority** (dim 10) — cluster links + relative PageRank + keyword depth. Prevents linking to semantically similar but weak pages.
+- **Placement quality** (dim 11) — paragraph-level embedding match × Reasonable Surfer position. First third of article gets 1.5× boost.
+- Paragraph-level intent matching — 5 paragraph embeddings per article, batch API call. Each target matched to best-fitting paragraph.
+- Anchor diversity control — every target with 2+ incoming links gets exact/partial/contextual/generic profile in GPT prompt.
+- 11-dimensional composite scoring with configurable weight sliders.
+
+**Graph visualization — 5 interactive views:**
+- Removed force-directed graph (spaghetti with 60+ nodes) and adjacency matrix (unreadable at 30+ pages)
+- New **Concentric Rings** view — nodes by tier (Homepage → Pillar → Category → Article), click = show connections only for that node, drag = reposition, double-click = reset, pulse animation on selection
+- New **List + Panel** view — sortable table on left, click page → right panel shows all IN/OUT links with clickable navigation and LOOM badges
+- New **Bubble Scatter** view — X-axis = incoming links, Y-axis = outgoing links, bubble size = PageRank, color = cluster. Red zone (bottom-left) highlights orphans and dead ends, green zone (top-right) highlights healthy hubs
+- New **Keyword Galaxy** view — all GSC queries displayed as interactive tag cloud. Size = impressions, color = Google position (green = top 3, teal = page 1, purple = striking distance). Filter by page. Hover any keyword = "use as anchor text" recommendation
+- New **Anchor Explorer** view — per-page incoming anchor profile. Classifies every anchor as exact match / partial match / contextual / generic. Anchor Health Score 0-100 with automatic warnings (over-optimization at >30% exact, wasted links at >15% generic). Expandable: click anchor → see all source pages with link position (top/middle/bottom) and LOOM badge
+
+**Bug fixes (10):**
+- Embedding generation infinite loop — errors now reported instead of silent 0-progress retry
+- Auto-Podlinkuj embedding formula mismatch — was `title | content`, now `title | title | title | content` matching batch
+- `remove_all_loom_links` re-added `save_post` hook with wrong priority (10) and args (2) — fixed to 20/3
+- Re-scan deleted LOOM-generated links — `DELETE WHERE source_post_id = X` now filters `AND is_plugin_generated = 0`
+- `insert_link()` always linked first occurrence — now uses `paragraph_number` hint to find correct position
+- `money_pages_health` missing GSC columns — added `gsc_position`, `gsc_impressions`, `gsc_ctr`
+- `the_content` filter crash killed entire scan batch — now wrapped in try/catch with raw content fallback
+- GSC URL double encoding — normalized with `rtrim(trim())`
+- Link velocity used `last_scanned` (scan date) instead of `post_date` (publication date)
+- JS syntax error: missing `}` for `if(canvas)` block — all JS dead on onboarding page
+
+**Performance:**
+- Composite scoring: eliminated 45 N+1 queries per Podlinkuj (batch `_prime_post_caches`, batch cluster links, batch pillar lookup)
+- Dashboard stats: 16 separate `SELECT COUNT(*)` → 3 aggregated queries
+- Paragraph embeddings: 5 API calls → 1 batch call (`get_embeddings_batch`)
+- Settings static cache — `get_option()` called once per request instead of 20+
+- Link removal regex handles nested tags (`<a><strong>text</strong></a>`)
+
+**UI:**
+- 34 tooltips across entire dashboard — every metric, table header, button, badge, filter, tab has hover explanation
+- Embedding progress bar shows `3/66` instead of "Pozostało: 66"
+- Error messages displayed on embedding failure with button re-enabled for retry
+- `cursor: help` on tooltip elements with subtle teal hover highlight
+
+**Localization:**
+- English translation: 238 strings in `languages/loom-en_US.po` + compiled `.mo`
+- Switch WordPress language to English → full English UI
+
+### 2.2.0
+
+- Google Search Console integration (Service Account JWT auth)
+- Money page system with priority, goals, anchor distribution monitoring
+- 6-tab dashboard (Overview, Money Pages, Striking, Graph, Posts, Settings)
+- One-click removal of all LOOM links with content backup
+- Internal PageRank, betweenness centrality, dead-end and bridge detection
+- 5-layer keyword extraction (SEO plugin, title, TF-IDF, GPT, GSC queries)
+- Two-stage similarity search (64D Matryoshka pre-filter → 512D dot product)
+- GPT-4o-mini with Structured Outputs and strict JSON schema
+- UI redesign: DM Sans + JetBrains Mono, teal palette, component system
 
 ---
 

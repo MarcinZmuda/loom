@@ -681,7 +681,7 @@
 	}
 
 	/* =======================================================================
-	   LINK MAP  -  Multi-view graph (Rings / Table / Matrix)
+	   LINK MAP  -  Multi-view graph (Rings / Table / Bubble / Keywords / Anchors)
 	   ======================================================================= */
 	var canvas = document.getElementById('loom-link-map');
 	if (canvas) {
@@ -702,7 +702,9 @@
 			$('#loom-view-' + currentView).show();
 			if (currentView === 'rings') drawRings();
 			if (currentView === 'table') renderTable();
-			if (currentView === 'matrix') renderMatrix();
+			if (currentView === 'bubble') renderBubble();
+			if (currentView === 'keywords') renderKeywords();
+			if (currentView === 'anchors') renderAnchors();
 		});
 
 		function resizeCanvas() {
@@ -1124,110 +1126,330 @@
 		});
 
 		// ═══════════════════════════════════════════════
-		//  VIEW 3: ADJACENCY MATRIX
+		//  VIEW 3: BUBBLE SCATTER (IN vs OUT vs PR)
 		// ═══════════════════════════════════════════════
-		function renderMatrix() {
-			var sorted = graphNodes.slice().sort(function(a, b) { return a.tier - b.tier || b['in'] - a['in']; });
-			var N = sorted.length;
-			if (N > 30) sorted = sorted.slice(0, 30);
-			N = sorted.length;
-
-			var edgeSet = {};
-			graphEdges.forEach(function(e) { edgeSet[e.from + '-' + e.to] = e.loom ? 'loom' : 'manual'; });
-
-			var size = Math.max(26, Math.min(36, Math.floor(900 / N)));
-			var margin = 220;
-			var total = margin + N * size + 50;
-
-			var html = '<div style="position:relative">';
-			html += '<svg width="' + total + '" height="' + total + '" xmlns="http://www.w3.org/2000/svg" id="loom-matrix-svg">';
-
-			// Column headers (rotated).
-			sorted.forEach(function(n, i) {
-				var x = margin + i * size + size / 2;
-				var tc = TIER_COLORS[Math.min(3, n.tier || 3)];
-				var lbl = n.label.length > 28 ? n.label.substring(0, 26) + '…' : n.label;
-				html += '<text x="' + x + '" y="' + (margin - 6) + '" font-size="12" fill="' + tc + '" text-anchor="end" font-weight="600" ';
-				html += 'transform="rotate(-55,' + x + ',' + (margin - 6) + ')" class="loom-mx-col" data-col="' + i + '">' + escHtml(lbl) + '</text>';
+		function renderBubble() {
+			var W = $('#loom-bubble-container').width() || 780, H = 440;
+			var m = {t:30,r:30,b:50,l:55};
+			var iW = W-m.l-m.r, iH = H-m.t-m.b;
+			var maxIn = 1, maxOut = 1, maxPr = 0.001;
+			graphNodes.forEach(function(n) {
+				if (n['in'] > maxIn) maxIn = n['in'];
+				if (n.out > maxOut) maxOut = n.out;
+				if (n.pr > maxPr) maxPr = n.pr;
 			});
+			maxIn++; maxOut++;
 
-			// Rows.
-			sorted.forEach(function(row, ri) {
-				var tc = TIER_COLORS[Math.min(3, row.tier || 3)];
-				var lbl = row.label.length > 30 ? row.label.substring(0, 28) + '…' : row.label;
-				html += '<text x="' + (margin - 8) + '" y="' + (margin + ri * size + size / 2 + 4) + '" font-size="12" fill="' + tc + '" text-anchor="end" font-weight="600" class="loom-mx-row" data-row="' + ri + '">' + escHtml(lbl) + '</text>';
+			var xs = function(v) { return m.l + (v / maxIn) * iW; };
+			var ys = function(v) { return H - m.b - (v / maxOut) * iH; };
+			var rs = function(v) { return Math.max(5, Math.min(24, (v / maxPr) * 22)); };
 
-				sorted.forEach(function(col, ci) {
-					var key = row.id + '-' + col.id;
-					var type = edgeSet[key];
-					var fill = type === 'loom' ? '#0d9488' : (type === 'manual' ? '#93c5fd' : (ri === ci ? '#f8fafc' : '#fafafa'));
-					var opacity = type ? 1 : 0.4;
-					var fromLabel = escHtml(row.label);
-					var toLabel = escHtml(col.label);
-					var title = type ? (fromLabel + ' → ' + toLabel + (type === 'loom' ? ' (LOOM)' : '')) : '';
+			var svg = '<svg width="'+W+'" height="'+H+'" xmlns="http://www.w3.org/2000/svg">';
 
-					html += '<rect x="' + (margin + ci * size) + '" y="' + (margin + ri * size) + '" ';
-					html += 'width="' + (size - 1) + '" height="' + (size - 1) + '" rx="3" ';
-					html += 'fill="' + fill + '" stroke="#e5e7eb" stroke-width="0.5" opacity="' + opacity + '" ';
-					html += 'class="loom-mx-cell" data-row="' + ri + '" data-col="' + ci + '" data-type="' + (type || '') + '" ';
-					html += 'data-from="' + fromLabel + '" data-to="' + toLabel + '" style="cursor:' + (type ? 'pointer' : 'default') + '"/>';
-				});
-			});
+			// Danger zones
+			svg += '<rect x="'+m.l+'" y="'+ys(1)+'" width="'+(xs(1)-m.l)+'" height="'+(ys(0)-ys(1))+'" fill="#fef2f2" opacity="0.5" rx="4"/>';
+			svg += '<text x="'+(m.l+6)+'" y="'+ys(0.3)+'" font-size="9" fill="#ef4444" font-weight="600">Orphan + Dead End</text>';
+			var hubX = xs(Math.max(6, maxIn*0.5));
+			svg += '<rect x="'+hubX+'" y="'+m.t+'" width="'+(W-m.r-hubX)+'" height="'+(ys(Math.max(4,maxOut*0.3))-m.t)+'" fill="#f0fdf4" opacity="0.4" rx="4"/>';
+			svg += '<text x="'+(W-m.r-6)+'" y="'+(m.t+14)+'" font-size="9" fill="#16a34a" font-weight="600" text-anchor="end">Zdrowe huby</text>';
 
-			// Legend.
-			var ly = margin + N * size + 16;
-			html += '<rect x="' + margin + '" y="' + ly + '" width="14" height="14" fill="#0d9488" rx="3"/>';
-			html += '<text x="' + (margin + 20) + '" y="' + (ly + 11) + '" font-size="13" fill="#374151">LOOM link</text>';
-			html += '<rect x="' + (margin + 100) + '" y="' + ly + '" width="14" height="14" fill="#93c5fd" rx="3"/>';
-			html += '<text x="' + (margin + 120) + '" y="' + (ly + 11) + '" font-size="13" fill="#374151">Ręczny link</text>';
-
-			if (graphNodes.length > 35) {
-				html += '<text x="' + (margin + 230) + '" y="' + (ly + 11) + '" font-size="13" fill="#94a3b8">Wyświetlam top 30 z ' + graphNodes.length + '</text>';
+			// Grid
+			for (var gi = 0; gi <= maxIn; gi += Math.max(1, Math.round(maxIn/5))) {
+				svg += '<line x1="'+xs(gi)+'" y1="'+m.t+'" x2="'+xs(gi)+'" y2="'+(H-m.b)+'" stroke="#f1f5f9"/>';
+				svg += '<text x="'+xs(gi)+'" y="'+(H-m.b+16)+'" font-size="10" fill="#94a3b8" text-anchor="middle">'+gi+'</text>';
 			}
-			html += '</svg>';
+			for (var gj = 0; gj <= maxOut; gj += Math.max(1, Math.round(maxOut/4))) {
+				svg += '<line x1="'+m.l+'" y1="'+ys(gj)+'" x2="'+(W-m.r)+'" y2="'+ys(gj)+'" stroke="#f1f5f9"/>';
+				svg += '<text x="'+(m.l-8)+'" y="'+(ys(gj)+4)+'" font-size="10" fill="#94a3b8" text-anchor="end">'+gj+'</text>';
+			}
+			svg += '<text x="'+(W/2)+'" y="'+(H-6)+'" font-size="11" fill="#64748b" text-anchor="middle" font-weight="600">← Linki IN (przychodzące) →</text>';
+			svg += '<text x="14" y="'+(H/2)+'" font-size="11" fill="#64748b" text-anchor="middle" font-weight="600" transform="rotate(-90,14,'+(H/2)+')">← Linki OUT →</text>';
 
-			// Tooltip div.
-			html += '<div id="loom-mx-tooltip" style="display:none;position:absolute;background:white;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:11px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:10;white-space:nowrap"></div>';
-			html += '</div>';
+			// Bubbles
+			graphNodes.forEach(function(n) {
+				var cx = xs(n['in']), cy = ys(n.out), cr = rs(n.pr);
+				var col = n.orphan ? '#ef4444' : n.money ? '#eab308' : n.striking ? '#a855f7' : TIER_COLORS[Math.min(3, n.tier||3)];
+				svg += '<circle cx="'+cx+'" cy="'+cy+'" r="'+cr+'" fill="'+col+'25" stroke="'+col+'" stroke-width="1.5" class="loom-bub" data-id="'+n.id+'" style="cursor:pointer"/>';
+				if (cr > 9) svg += '<text x="'+cx+'" y="'+(cy+cr+12)+'" font-size="9" fill="#374151" text-anchor="middle">'+(n.label.length>16?n.label.substring(0,14)+'…':n.label)+'</text>';
+			});
+			svg += '</svg>';
 
-			$('#loom-matrix-container').html(html);
+			// Legend
+			svg += '<div style="display:flex;gap:12px;justify-content:center;margin-top:6px;font-size:9px;color:#94a3b8">';
+			TIER_COLORS.forEach(function(c,i) { svg += '<span style="display:flex;align-items:center;gap:3px"><span style="width:7px;height:7px;border-radius:4px;background:'+c+'"></span>'+TIER_LABELS[i]+'</span>'; });
+			svg += '<span>| Rozmiar = PageRank</span></div>';
 
-			// ─── Matrix hover interaction ───
-			$('#loom-matrix-container').on('mouseenter', '.loom-mx-cell', function() {
-				var $cell = $(this);
-				var row = $cell.data('row'), col = $cell.data('col');
-				var type = $cell.data('type');
+			$('#loom-bubble-container').html(svg);
 
-				// Highlight row + column.
-				$('.loom-mx-cell').each(function() {
-					var $c = $(this);
-					var cr = $c.data('row'), cc = $c.data('col');
-					if (cr === row || cc === col) {
-						$c.attr('stroke', '#0d9488').attr('stroke-width', '1.5');
-					}
-				});
-				$('.loom-mx-row[data-row="' + row + '"]').attr('font-weight', '800').attr('font-size', '14');
-				$('.loom-mx-col[data-col="' + col + '"]').attr('font-weight', '800').attr('font-size', '14');
-
-				// Tooltip.
-				if (type) {
-					var from = $cell.data('from'), to = $cell.data('to');
-					var badge = type === 'loom'
-						? '<span style="background:#ccfbf1;color:#115e59;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:600">LOOM</span>'
-						: '<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:10px;font-size:9px">Ręczny</span>';
-					$('#loom-mx-tooltip').html(from + ' → ' + to + ' ' + badge).css({
-						display: 'block',
-						left: parseInt($cell.attr('x')) + 30,
-						top: parseInt($cell.attr('y')) - 10
-					}).show();
-				}
-			}).on('mouseleave', '.loom-mx-cell', function() {
-				$('.loom-mx-cell').attr('stroke', '#e5e7eb').attr('stroke-width', '0.5');
-				$('.loom-mx-row').attr('font-weight', '500').attr('font-size', '12');
-				$('.loom-mx-col').attr('font-weight', '500').attr('font-size', '12');
-				$('#loom-mx-tooltip').hide();
+			// Hover
+			$('#loom-bubble-container').on('mouseenter', '.loom-bub', function() {
+				var id = parseInt($(this).data('id'));
+				var n = nodeMap[id]; if (!n) return;
+				$(this).attr('stroke-width', '3').attr('r', parseInt($(this).attr('r')) + 3);
+				var tip = '<div style="position:fixed;background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;font-size:11px;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.1);pointer-events:none" id="loom-bub-tip">';
+				tip += '<div style="font-weight:700;font-size:12px">'+escHtml(n.label)+'</div>';
+				tip += '<div style="color:#64748b">IN: '+n['in']+' · OUT: '+n.out+' · PR: '+(n.pr?(n.pr*100).toFixed(1):'—')+'</div>';
+				var flags = [];
+				if (n.orphan) flags.push('🔴 Orphan'); if (n.money) flags.push('⭐ Money');
+				if (n.striking) flags.push('🎯 Striking'); if (n.dead_end) flags.push('⚫ Dead End');
+				if (flags.length) tip += '<div style="margin-top:2px">'+flags.join(' ')+'</div>';
+				tip += '</div>';
+				$('body').append(tip);
+			}).on('mousemove', '.loom-bub', function(e) {
+				$('#loom-bub-tip').css({left: e.clientX+15, top: e.clientY-10});
+			}).on('mouseleave', '.loom-bub', function() {
+				$(this).attr('stroke-width', '1.5').attr('r', parseInt($(this).attr('r')) - 3);
+				$('#loom-bub-tip').remove();
 			});
 		}
+
+		// ═══════════════════════════════════════════════
+		//  VIEW 4: KEYWORD GALAXY (GSC queries)
+		// ═══════════════════════════════════════════════
+		var kwSelectedPage = null;
+
+		function renderKeywords() {
+			var pagesWithQ = graphNodes.filter(function(n) { return n.queries && n.queries.length; });
+
+			// Page list
+			var html = '<div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:6px">Filtruj stronę</div>';
+			html += '<div class="loom-kw-page-item" data-pid="0" style="padding:5px 10px;cursor:pointer;border-radius:6px;font-size:10px;'+(kwSelectedPage===null?'font-weight:700;background:#f0fdfa;color:#0d9488':'color:#64748b')+'">Wszystkie</div>';
+			pagesWithQ.forEach(function(p) {
+				var sel = kwSelectedPage === p.id;
+				html += '<div class="loom-kw-page-item" data-pid="'+p.id+'" style="padding:4px 10px;cursor:pointer;border-radius:6px;font-size:10px;border-left:3px solid '+(sel?'#0d9488':'transparent')+';'+(sel?'font-weight:700;background:#f0fdfa;color:#0d9488':'color:#64748b')+'">';
+				html += (p.money?'⭐ ':'')+(p.label.length>22?p.label.substring(0,20)+'…':p.label);
+				html += '<span style="float:right;color:#94a3b8">'+p.queries.length+'</span></div>';
+			});
+			$('#loom-kw-pages').html(html);
+
+			// Gather queries
+			var allQ = [];
+			pagesWithQ.forEach(function(p) {
+				(p.queries||[]).forEach(function(q) { allQ.push({q:q.query||q.q, clicks:q.clicks, impr:q.impressions||q.impr, pos:q.position||q.pos, pid:p.id, pName:p.label}); });
+			});
+			var filtered = kwSelectedPage ? allQ.filter(function(q){return q.pid===kwSelectedPage;}) : allQ;
+			filtered.sort(function(a,b){return b.impr-a.impr;});
+			var maxI = Math.max(1, filtered.length ? filtered[0].impr : 1);
+
+			// Cloud
+			var cloud = '';
+			if (!filtered.length) {
+				cloud = '<div style="color:#94a3b8;padding:40px;text-align:center">Brak danych GSC. Połącz Google Search Console i kliknij Sync.</div>';
+			} else {
+				filtered.forEach(function(q, i) {
+					var sz = Math.max(10, Math.min(18, 8 + (q.impr/maxI)*10));
+					var pc = q.pos<=3?'#16a34a':q.pos<=10?'#0d9488':q.pos<=20?'#7c3aed':'#94a3b8';
+					var bg = q.pos<=3?'#dcfce7':q.pos<=10?'#f0fdfa':q.pos<=20?'#faf5ff':'#f9fafb';
+					cloud += '<span class="loom-kw-tag" data-idx="'+i+'" style="display:inline-block;padding:'+(sz>13?'6px 12px':'4px 8px')+';background:'+bg+';border:1.5px solid '+bg+';border-radius:8px;cursor:pointer;font-size:'+sz+'px;font-weight:'+(sz>12?700:500)+';color:'+pc+';transition:all .15s">';
+					cloud += escHtml(q.q) + '</span>';
+				});
+				cloud += '<div style="display:flex;gap:12px;justify-content:center;margin-top:12px;font-size:9px;color:#94a3b8">';
+				cloud += '<span><span style="display:inline-block;width:7px;height:7px;border-radius:4px;background:#16a34a;margin-right:3px"></span>Top 3</span>';
+				cloud += '<span><span style="display:inline-block;width:7px;height:7px;border-radius:4px;background:#0d9488;margin-right:3px"></span>Strona 1</span>';
+				cloud += '<span><span style="display:inline-block;width:7px;height:7px;border-radius:4px;background:#7c3aed;margin-right:3px"></span>Striking</span>';
+				cloud += '<span>Rozmiar = impressions</span></div>';
+			}
+			$('#loom-kw-cloud').html(cloud);
+
+			// Store for tooltip
+			$('#loom-kw-cloud').data('queries', filtered);
+		}
+
+		$(document).on('click', '.loom-kw-page-item', function() {
+			var pid = parseInt($(this).data('pid'));
+			kwSelectedPage = pid === 0 ? null : (kwSelectedPage === pid ? null : pid);
+			renderKeywords();
+		});
+
+		$(document).on('mouseenter', '.loom-kw-tag', function(e) {
+			var idx = parseInt($(this).data('idx'));
+			var qs = $('#loom-kw-cloud').data('queries');
+			var q = qs ? qs[idx] : null;
+			if (!q) return;
+			$(this).css({'border-color': $(this).css('color'), 'background': $(this).css('color') + '15'});
+			var pc = q.pos<=3?'#16a34a':q.pos<=10?'#0d9488':q.pos<=20?'#7c3aed':'#94a3b8';
+			var tip = '<div id="loom-kw-tip" style="position:fixed;background:white;border:1.5px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:10px;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.1);pointer-events:none;white-space:nowrap">';
+			tip += '<div style="font-weight:700;font-size:12px">'+escHtml(q.q)+'</div>';
+			tip += '<div style="color:#64748b">Poz: <b style="color:'+pc+'">'+q.pos.toFixed(1)+'</b> · Impr: <b>'+q.impr.toLocaleString()+'</b> · Clicks: <b style="color:#0d9488">'+q.clicks+'</b></div>';
+			if (!kwSelectedPage) tip += '<div style="color:#94a3b8;margin-top:2px">→ '+escHtml(q.pName.substring(0,30))+'</div>';
+			tip += '<div style="color:#0d9488;margin-top:3px;font-weight:600">💡 Użyj jako anchor text w linkach</div></div>';
+			$('body').append(tip);
+			$('#loom-kw-tip').css({left: e.clientX+15, top: e.clientY-20});
+		}).on('mousemove', '.loom-kw-tag', function(e) {
+			$('#loom-kw-tip').css({left: e.clientX+15, top: e.clientY-20});
+		}).on('mouseleave', '.loom-kw-tag', function() {
+			var bg = $(this).css('color').replace(')', ',0.06)').replace('rgb', 'rgba');
+			$(this).css({'border-color': 'transparent'});
+			$('#loom-kw-tip').remove();
+		});
+
+		// ═══════════════════════════════════════════════
+		//  VIEW 5: ANCHOR EXPLORER
+		// ═══════════════════════════════════════════════
+		var anchorSelectedPage = null;
+		var anchorExpanded = null;
+		var GENERIC = ['tutaj','kliknij','więcej','sprawdź','czytaj więcej','więcej informacji','kliknij tutaj','pomoc prawna','here','click','read more'];
+
+		function classifyAnchor(a, pk) {
+			var al = (a||'').toLowerCase().trim(), pkl = (pk||'').toLowerCase().trim();
+			if (GENERIC.indexOf(al) >= 0) return 'generic';
+			if (pkl && al === pkl) return 'exact';
+			if (pkl && (al.indexOf(pkl) >= 0 || pkl.indexOf(al) >= 0)) return 'partial';
+			return 'contextual';
+		}
+		var ATYPE = {
+			exact: {label:'Exact',color:'#dc2626',bg:'#fee2e2',icon:'🎯'},
+			partial: {label:'Partial',color:'#f59e0b',bg:'#fef3c7',icon:'🔶'},
+			contextual: {label:'Context',color:'#0d9488',bg:'#f0fdfa',icon:'💬'},
+			generic: {label:'Generic',color:'#94a3b8',bg:'#f8fafc',icon:'⚪'}
+		};
+
+		function renderAnchors() {
+			// Pages that have incoming links
+			var targets = [];
+			var targetSet = {};
+			graphEdges.forEach(function(e) {
+				if (e.to && !targetSet[e.to]) { targetSet[e.to] = true; targets.push(e.to); }
+			});
+			targets.sort(function(a,b) {
+				var na = nodeMap[a], nb = nodeMap[b];
+				return (nb ? nb['in'] : 0) - (na ? na['in'] : 0);
+			});
+
+			if (!anchorSelectedPage && targets.length) anchorSelectedPage = targets[0];
+
+			// Page list
+			var html = '<div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:6px">Strona docelowa</div>';
+			targets.forEach(function(tid) {
+				var n = nodeMap[tid]; if (!n) return;
+				var cnt = graphEdges.filter(function(e){return e.to===tid;}).length;
+				var sel = anchorSelectedPage === tid;
+				html += '<div class="loom-anch-page" data-pid="'+tid+'" style="padding:5px 10px;cursor:pointer;border-radius:6px;font-size:10px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid '+(sel?'#0d9488':'transparent')+';'+(sel?'font-weight:700;background:#f0fdfa;color:#0d9488':'color:#374151')+'">';
+				html += '<span>'+(n.money?'⭐ ':'')+(n.label.length>20?n.label.substring(0,18)+'…':n.label)+'</span>';
+				html += '<span style="font-family:monospace;font-size:9px;color:#0d9488;font-weight:700">'+cnt+'</span></div>';
+			});
+			$('#loom-anchor-pages').html(html);
+
+			// Anchor detail
+			if (!anchorSelectedPage || !nodeMap[anchorSelectedPage]) {
+				$('#loom-anchor-detail').html('<div style="color:#94a3b8;text-align:center;padding-top:60px">← Wybierz stronę</div>');
+				return;
+			}
+
+			var page = nodeMap[anchorSelectedPage];
+			var linksTo = graphEdges.filter(function(e){return e.to===anchorSelectedPage;});
+			var total = linksTo.length;
+			var pk = page.primary_kw || '';
+
+			// Group anchors
+			var groups = {};
+			linksTo.forEach(function(l) {
+				var key = (l.anchor||'').toLowerCase();
+				if (!key) key = '(brak tekstu)';
+				if (!groups[key]) groups[key] = {anchor:l.anchor||'(brak)', count:0, sources:[], loomCt:0, type:classifyAnchor(l.anchor,pk)};
+				groups[key].count++;
+				groups[key].sources.push(l);
+				if (l.loom) groups[key].loomCt++;
+			});
+			var anchorList = Object.values(groups).sort(function(a,b){return b.count-a.count;});
+
+			// Distribution
+			var dist = {exact:0,partial:0,contextual:0,generic:0};
+			linksTo.forEach(function(l){dist[classifyAnchor(l.anchor,pk)]++;});
+
+			// Health
+			var health = 100;
+			if (total > 0) {
+				var ep = dist.exact/total, gp = dist.generic/total;
+				if (ep>.3) health -= (ep-.3)*200;
+				if (ep>.5) health -= 30;
+				if (gp>.15) health -= (gp-.15)*150;
+			}
+			health = Math.max(0, Math.min(100, Math.round(health)));
+			var hc = health>=70?'#16a34a':health>=40?'#f59e0b':'#dc2626';
+
+			var det = '';
+			// Header
+			det += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+			det += '<div><div style="font-size:16px;font-weight:800">'+escHtml(page.label)+'</div>';
+			det += '<div style="font-size:10px;color:#64748b">'+total+' linków · KW: <b style="color:#0d9488">'+(pk?escHtml(pk):'—')+'</b></div></div>';
+			det += '<div style="text-align:center"><div style="font-size:28px;font-weight:900;color:'+hc+';font-family:monospace;line-height:1">'+health+'</div>';
+			det += '<div style="font-size:8px;color:#94a3b8;font-weight:600">ANCHOR HEALTH</div></div></div>';
+
+			// Distribution bar
+			det += '<div style="display:flex;height:22px;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;margin-bottom:6px">';
+			['exact','partial','contextual','generic'].forEach(function(type) {
+				var count = dist[type]; if (!count) return;
+				var pct = total ? (count/total)*100 : 0;
+				var mt = ATYPE[type];
+				det += '<div style="width:'+pct+'%;background:'+mt.bg+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:'+mt.color+';border-right:1px solid #e5e7eb" title="'+mt.label+': '+count+' ('+(Math.round(pct))+'%)">';
+				if (pct >= 12) det += mt.icon+' '+Math.round(pct)+'%';
+				det += '</div>';
+			});
+			det += '</div>';
+
+			// Type legend
+			det += '<div style="display:flex;gap:10px;margin-bottom:8px;font-size:9px">';
+			['exact','partial','contextual','generic'].forEach(function(type) {
+				var mt = ATYPE[type]; det += '<span style="color:'+mt.color+';font-weight:600">'+mt.icon+' '+mt.label+': '+dist[type]+'</span>';
+			});
+			det += '</div>';
+
+			// Warnings
+			if (total>2 && dist.exact/total>.3) det += '<div style="padding:5px 10px;background:#fef2f2;border-radius:8px;font-size:10px;color:#dc2626;font-weight:600;margin-bottom:6px">⚠️ Exact match '+Math.round(dist.exact/total*100)+'% — ryzyko over-optymalizacji!</div>';
+			if (total>2 && dist.generic/total>.2) det += '<div style="padding:5px 10px;background:#fef3c7;border-radius:8px;font-size:10px;color:#92400e;font-weight:600;margin-bottom:6px">⚠️ Generic '+Math.round(dist.generic/total*100)+'% — zero wartości SEO</div>';
+			if (health>=70 && total>=3) det += '<div style="padding:5px 10px;background:#dcfce7;border-radius:8px;font-size:10px;color:#16a34a;font-weight:600;margin-bottom:6px">✅ Profil anchorów wygląda naturalnie</div>';
+
+			// Anchor list
+			anchorList.forEach(function(ag, i) {
+				var mt = ATYPE[ag.type];
+				var pct = total ? Math.round((ag.count/total)*100) : 0;
+				var isExp = anchorExpanded === i;
+
+				det += '<div style="margin-bottom:3px">';
+				det += '<div class="loom-anch-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:'+(isExp?'#f0fdfa':'#fff')+';border:1.5px solid '+(isExp?'#0d9488':'#f1f5f9')+';border-radius:8px;cursor:pointer;font-size:11px">';
+				det += '<span style="background:'+mt.bg+';color:'+mt.color+';padding:1px 6px;border-radius:5px;font-size:8px;font-weight:700;min-width:50px;text-align:center">'+mt.icon+' '+mt.label+'</span>';
+				det += '<span style="flex:1;font-weight:600;color:#0f172a">"'+escHtml(ag.anchor)+'"</span>';
+				det += '<div style="width:50px;height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+(pct>=40?'#ef4444':mt.color)+';border-radius:3px"></div></div>';
+				det += '<span style="font-size:11px;font-weight:800;color:'+(pct>=40?'#ef4444':'#374151')+';font-family:monospace;min-width:40px;text-align:right">'+ag.count+'× ('+pct+'%)</span>';
+				if (ag.loomCt>0) det += '<span style="background:#ccfbf1;color:#115e59;padding:0 5px;border-radius:5px;font-size:8px;font-weight:700">'+ag.loomCt+'L</span>';
+				det += '<span style="font-size:9px;color:#94a3b8">'+(isExp?'▼':'▶')+'</span>';
+				det += '</div>';
+
+				// Expanded sources
+				if (isExp) {
+					det += '<div style="margin-left:18px;margin-top:3px;margin-bottom:6px">';
+					ag.sources.forEach(function(s) {
+						var srcName = nodeMap[s.from] ? nodeMap[s.from].label : 'ID:'+s.from;
+						var posLabel = s.pos==='top'?'⬆ Góra':s.pos==='middle'?'↔ Środek':'⬇ Dół';
+						var posBg = s.pos==='top'?'#dcfce7':s.pos==='middle'?'#f0fdfa':'#fef3c7';
+						det += '<div style="display:flex;align-items:center;gap:6px;padding:3px 8px;background:'+(s.loom?'#f0fdfa':'#f9fafb')+';border-radius:5px;margin-bottom:2px;font-size:10px">';
+						det += '<span style="color:#94a3b8">←</span>';
+						det += '<span style="flex:1;color:#374151">'+escHtml(srcName.substring(0,28))+'</span>';
+						det += '<span style="font-size:8px;padding:1px 5px;border-radius:5px;background:'+posBg+'">'+posLabel+'</span>';
+						if (s.loom) det += '<span style="background:#ccfbf1;color:#115e59;padding:0 4px;border-radius:5px;font-size:8px;font-weight:700">LOOM</span>';
+						det += '</div>';
+					});
+					det += '</div>';
+				}
+				det += '</div>';
+			});
+
+			if (!total) det += '<div style="text-align:center;padding:30px;color:#ef4444;font-weight:700">🔴 Orphan — brak linków!</div>';
+
+			$('#loom-anchor-detail').html(det);
+		}
+
+		$(document).on('click', '.loom-anch-page', function() {
+			anchorSelectedPage = parseInt($(this).data('pid'));
+			anchorExpanded = null;
+			renderAnchors();
+		});
+		$(document).on('click', '.loom-anch-row', function() {
+			var idx = parseInt($(this).data('idx'));
+			anchorExpanded = (anchorExpanded === idx) ? null : idx;
+			renderAnchors();
+		});
 
 	} // end if(canvas)
 

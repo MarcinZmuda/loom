@@ -291,12 +291,6 @@ msgstr "List"
 msgid "Lista stron z panelem połączeń. Kliknij stronę = zobacz linki IN i OUT."
 msgstr "Page list with connections panel. Click a page = see IN and OUT links."
 
-msgid "Macierz"
-msgstr "Matrix"
-
-msgid "Macierz NxN. Wiersz = źródło, kolumna = cel. Teal = link LOOM, niebieski = ręczny."
-msgstr "NxN matrix. Row = source, column = target. Teal = LOOM link, blue = manual."
-
 msgid "Mapa powiązań"
 msgstr "Link Map"
 
@@ -618,8 +612,8 @@ msgstr "Scoring weights, API keys, GSC, data management."
 msgid "Witaj w LOOM"
 msgstr "Welcome to LOOM"
 
-msgid "Wizualizacja grafu linków wewnętrznych: pierścienie, macierz, lista połączeń."
-msgstr "Internal link graph visualization: rings, matrix, connection list."
+msgid "Wizualizacja grafu linków wewnętrznych: pierścienie, scatter, keywords, anchory."
+msgstr "Internal link graph visualization: rings, scatter, keywords, anchors."
 
 msgid "Wklej zawartość pliku JSON."
 msgstr "Paste the JSON file contents."
@@ -728,3 +722,36 @@ msgstr "🧠 Embeddings"
 
 msgid "🧠 Generuj embeddingi (%d)"
 msgstr "🧠 Generate embeddings (%d)"
+
+msgid "X=IN, Y=OUT, rozmiar=PageRank. Orphany i huby widoczne natychmiast."
+msgstr "X=IN, Y=OUT, size=PageRank. Orphans and hubs visible at a glance."
+
+msgid "Zapytania z Google Search Console. Rozmiar=impressions. Użyj jako anchor text."
+msgstr "Google Search Console queries. Size=impressions. Use as anchor text."
+
+msgid "Profil anchorów per strona: exact/partial/contextual/generic %, health score."
+msgstr "Anchor profile per page: exact/partial/contextual/generic %, health score."
+
+msgid "Anchory"
+msgstr "Anchors"
+
+msgid "Struktura hierarchiczna. Kliknij = połączenia, przeciągnij = przesuń."
+msgstr "Hierarchical structure. Click = connections, drag = move."
+
+msgid "Lista stron z panelem połączeń IN/OUT."
+msgstr "Page list with IN/OUT connections panel."
+
+msgid "Broken links (%d)"
+msgstr "Broken links (%d)"
+
+msgid "Linki wskazujące na nieistniejące strony. Szkodzą SEO i UX. Napraw je usuwając link lub podmieniając URL."
+msgstr "Links pointing to non-existent pages. Harmful for SEO and UX. Fix by removing the link or replacing the URL."
+
+msgid "Strony zawierające zepsute linki wewnętrzne (prowadzące do nieistniejących stron)."
+msgstr "Pages containing broken internal links (pointing to non-existent pages)."
+
+msgid "Wymaga naprawy"
+msgstr "Needs fixing"
+
+msgid "Ładowanie..."
+msgstr "Loading..."
