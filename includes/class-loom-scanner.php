@@ -73,7 +73,12 @@ class Loom_Scanner {
 		if ( ! $post ) return;
 
 		// Render content (Gutenberg blocks, shortcodes).
-		$rendered   = apply_filters( 'the_content', $post->post_content );
+		try {
+			$rendered = apply_filters( 'the_content', $post->post_content );
+		} catch ( \Throwable $e ) {
+			$rendered = $post->post_content; // Fallback to raw content.
+			Loom_DB::log( 'scan_error', $post->ID, array( 'error' => $e->getMessage() ) );
+		}
 		$clean_text = wp_strip_all_tags( $rendered );
 		$clean_text = preg_replace( '/\s+/', ' ', trim( $clean_text ) );
 		$word_count = str_word_count( $clean_text );

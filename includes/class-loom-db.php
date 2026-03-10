@@ -93,8 +93,10 @@ class Loom_DB {
 	public static function delete_links_for_post( $post_id ) {
 		global $wpdb;
 		$table = self::links_table();
+		// Only delete manually-found links. LOOM-generated links are managed separately.
 		$wpdb->query( $wpdb->prepare(
-			"DELETE FROM {$table} WHERE source_post_id = %d", $post_id
+			"DELETE FROM {$table} WHERE source_post_id = %d AND is_plugin_generated = 0",
+			$post_id
 		) );
 	}
 
@@ -179,80 +181,69 @@ class Loom_DB {
 		$lnk = self::links_table();
 		$log = self::log_table();
 
-		// Core metrics.
-		$total     = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx}" );
-		$orphans   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE is_orphan = 1" );
-		$avg_out   = round( (float) $wpdb->get_var( "SELECT AVG(outgoing_links_count) FROM {$idx}" ), 1 );
-		$avg_in    = round( (float) $wpdb->get_var( "SELECT AVG(incoming_links_count) FROM {$idx}" ), 1 );
-		$total_lnk = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$lnk}" );
-		$loom_lnk  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$lnk} WHERE is_plugin_generated = 1" );
-		$api_cost  = round( (float) $wpdb->get_var( "SELECT SUM(api_cost_usd) FROM {$log}" ), 2 );
-
-		// Structure.
-		$deep      = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE click_depth > 3 OR click_depth IS NULL" );
-		$dead_ends = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE is_dead_end = 1" );
-		$bridges   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE is_bridge = 1" );
-		$max_depth = (int) $wpdb->get_var( "SELECT MAX(click_depth) FROM {$idx}" );
-
-		// Embeddings.
-		$emb_done  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE embedding IS NOT NULL" );
-		$emb_miss  = $total - $emb_done;
-
-		// Keywords.
-		$kw_done   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE focus_keywords IS NOT NULL AND focus_keywords != ''" );
-
-		// Money pages.
-		$money_ct  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE is_money_page = 1" );
-		$money_deficit = (int) $wpdb->get_var(
-			"SELECT COUNT(*) FROM {$idx} WHERE is_money_page = 1 AND incoming_links_count < target_links_goal"
+		// Single aggregated query for loom_index (replaces 12 separate queries).
+		$agg = $wpdb->get_row(
+			"SELECT
+				COUNT(*) AS total,
+				SUM(is_orphan) AS orphans,
+				SUM(is_dead_end) AS dead_ends,
+				SUM(is_bridge) AS bridges,
+				SUM(is_money_page) AS money,
+				SUM(CASE WHEN is_money_page = 1 AND incoming_links_count < target_links_goal THEN 1 ELSE 0 END) AS money_deficit,
+				SUM(is_striking_distance) AS striking,
+				SUM(CASE WHEN gsc_position IS NOT NULL AND gsc_position > 0 THEN 1 ELSE 0 END) AS gsc_synced,
+				SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS emb_done,
+				SUM(CASE WHEN focus_keywords IS NOT NULL AND focus_keywords != '' THEN 1 ELSE 0 END) AS kw_done,
+				SUM(CASE WHEN click_depth > 3 OR click_depth IS NULL THEN 1 ELSE 0 END) AS deep_pages,
+				SUM(CASE WHEN incoming_links_count > 0 AND incoming_links_count < 3 THEN 1 ELSE 0 END) AS weak,
+				ROUND(AVG(outgoing_links_count), 1) AS avg_out,
+				ROUND(AVG(incoming_links_count), 1) AS avg_in,
+				MAX(click_depth) AS max_depth,
+				MAX(last_gsc_sync) AS last_sync
+			 FROM {$idx}",
+			ARRAY_A
 		);
 
-		// GSC.
-		$gsc_synced = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE gsc_position IS NOT NULL AND gsc_position > 0" );
-		$striking   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE is_striking_distance = 1" );
-		$last_sync  = $wpdb->get_var( "SELECT MAX(last_gsc_sync) FROM {$idx}" );
+		// Single aggregated query for loom_links (replaces 3 separate queries).
+		$lnk_agg = $wpdb->get_row(
+			"SELECT
+				COUNT(*) AS total_links,
+				SUM(is_plugin_generated) AS loom_links,
+				SUM(is_broken) AS broken,
+				SUM(is_nofollow) AS nofollow
+			 FROM {$lnk}",
+			ARRAY_A
+		);
 
-		// Link quality.
-		$broken     = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$lnk} WHERE is_broken = 1" );
-		$nofollow   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$lnk} WHERE is_nofollow = 1" );
+		$api_cost  = round( (float) $wpdb->get_var( "SELECT SUM(api_cost_usd) FROM {$log}" ), 2 );
+		$types_raw = $wpdb->get_results( "SELECT post_type, COUNT(*) as cnt FROM {$idx} GROUP BY post_type ORDER BY cnt DESC", ARRAY_A );
 
-		// Content types.
-		$types_raw  = $wpdb->get_results( "SELECT post_type, COUNT(*) as cnt FROM {$idx} GROUP BY post_type ORDER BY cnt DESC", ARRAY_A );
-
-		// Weak pages (1-2 incoming links).
-		$weak = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$idx} WHERE incoming_links_count > 0 AND incoming_links_count < 3" );
+		$total = intval( $agg['total'] ?? 0 );
 
 		return array(
-			// Core.
-			'total_posts'    => $total,
-			'orphans'        => $orphans,
-			'weak_pages'     => $weak,
-			'avg_out_links'  => $avg_out,
-			'avg_in_links'   => $avg_in,
-			'total_links'    => $total_lnk,
-			'loom_links'     => $loom_lnk,
-			'api_cost'       => $api_cost,
-			// Structure.
-			'deep_pages'     => $deep,
-			'dead_ends'      => $dead_ends,
-			'bridges'        => $bridges,
-			'max_depth'      => $max_depth,
-			// Embeddings & Keywords.
-			'embeddings_done'  => $emb_done,
-			'embeddings_miss'  => $emb_miss,
-			'keywords_done'    => $kw_done,
-			// Money.
-			'money_pages'      => $money_ct,
-			'money_deficit'    => $money_deficit,
-			// GSC.
-			'gsc_synced'       => $gsc_synced,
-			'striking_distance' => $striking,
-			'last_gsc_sync'    => $last_sync,
-			// Quality.
-			'broken_links'     => $broken,
-			'nofollow_links'   => $nofollow,
-			// Content types.
-			'post_types'       => $types_raw,
+			'total_posts'       => $total,
+			'orphans'           => intval( $agg['orphans'] ?? 0 ),
+			'weak_pages'        => intval( $agg['weak'] ?? 0 ),
+			'avg_out_links'     => floatval( $agg['avg_out'] ?? 0 ),
+			'avg_in_links'      => floatval( $agg['avg_in'] ?? 0 ),
+			'total_links'       => intval( $lnk_agg['total_links'] ?? 0 ),
+			'loom_links'        => intval( $lnk_agg['loom_links'] ?? 0 ),
+			'api_cost'          => $api_cost,
+			'deep_pages'        => intval( $agg['deep_pages'] ?? 0 ),
+			'dead_ends'         => intval( $agg['dead_ends'] ?? 0 ),
+			'bridges'           => intval( $agg['bridges'] ?? 0 ),
+			'max_depth'         => intval( $agg['max_depth'] ?? 0 ),
+			'embeddings_done'   => intval( $agg['emb_done'] ?? 0 ),
+			'embeddings_miss'   => $total - intval( $agg['emb_done'] ?? 0 ),
+			'keywords_done'     => intval( $agg['kw_done'] ?? 0 ),
+			'money_pages'       => intval( $agg['money'] ?? 0 ),
+			'money_deficit'     => intval( $agg['money_deficit'] ?? 0 ),
+			'gsc_synced'        => intval( $agg['gsc_synced'] ?? 0 ),
+			'striking_distance' => intval( $agg['striking'] ?? 0 ),
+			'last_gsc_sync'     => $agg['last_sync'] ?? null,
+			'broken_links'      => intval( $lnk_agg['broken'] ?? 0 ),
+			'nofollow_links'    => intval( $lnk_agg['nofollow'] ?? 0 ),
+			'post_types'        => $types_raw,
 		);
 	}
 
@@ -272,11 +263,16 @@ class Loom_DB {
 
 	/* ── Settings helpers ──────────────────────────── */
 
+	private static $settings_cache = null;
+
 	public static function get_settings() {
-		return wp_parse_args(
-			get_option( 'loom_settings', array() ),
-			Loom_Activator::default_settings()
-		);
+		if ( self::$settings_cache === null ) {
+			self::$settings_cache = wp_parse_args(
+				get_option( 'loom_settings', array() ),
+				Loom_Activator::default_settings()
+			);
+		}
+		return self::$settings_cache;
 	}
 
 	public static function get_api_key() {
@@ -399,7 +395,8 @@ class Loom_DB {
 
 		$pages = $wpdb->get_results(
 			"SELECT post_id, post_title, post_url, incoming_links_count,
-			        money_priority, target_links_goal, internal_pagerank
+			        money_priority, target_links_goal, internal_pagerank,
+			        gsc_position, gsc_impressions, gsc_ctr
 			 FROM {$idx}
 			 WHERE is_money_page = 1
 			 ORDER BY money_priority DESC, incoming_links_count ASC",
@@ -434,6 +431,8 @@ class Loom_DB {
 				'deficit'         => $deficit,
 				'anchor_diversity' => 100 - $max_pct,
 				'pagerank'        => floatval( $p['internal_pagerank'] ?? 0 ),
+				'gsc_position'    => floatval( $p['gsc_position'] ?? 0 ),
+				'gsc_impressions' => intval( $p['gsc_impressions'] ?? 0 ),
 				'anchors'         => array_slice( $dist, 0, 5 ),
 				'status'          => $status,
 			);

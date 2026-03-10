@@ -6,7 +6,7 @@
     <source media="(prefers-color-scheme: light)" srcset="assets/img/logo-wide.png">
     <img src="assets/img/logo-gh.png" alt="LOOM" width="400">
   </picture><br><br>
-  <strong>v2.3.0</strong> · 32 files · 7,348 lines · Zero external PHP dependencies<br>
+  <strong>v2.3.0</strong> · 32 files · 7,349 lines · Zero external PHP dependencies<br>
   WordPress 6.0+ · PHP 8.0+ · OpenAI API · Google Search Console (optional)<br>
   <br>
   Created by <strong><a href="https://marcinzmuda.com">Marcin Żmuda</a></strong>
@@ -28,7 +28,7 @@ LOOM analyzes your WordPress site's content, builds a semantic + topological gra
   - [Two-Stage Similarity Search](#3-two-stage-similarity-search)
   - [Graph Engine](#4-graph-engine)
   - [Keyword Extraction (5 Layers)](#5-keyword-extraction-5-layers)
-  - [Composite Scoring (9 Dimensions)](#6-composite-scoring-9-dimensions)
+  - [Composite Scoring (11 Dimensions)](#6-composite-scoring-11-dimensions)
   - [AI Suggestion Engine](#7-ai-suggestion-engine)
   - [Link Inserter](#8-link-inserter)
   - [Google Search Console](#9-google-search-console-integration)
@@ -82,23 +82,27 @@ Step  1  Loom_DB::get_index_row()              Load source post (34 columns)
 Step  2  Loom_OpenAI::get_embedding()           Generate 512D embedding if missing
                                                  Input: "title | title | title | 2500 chars"
 Step  3  Loom_DB::get_all_with_embeddings()     Load ALL targets (33 columns each)
-Step  4  Loom_Similarity::find_similar()        64D cosine pre-filter -> 512D dot product
-                                                 TOP 50 -> TOP 30
-Step  5  Loom_Composite::rank_targets()         11-dimensional scoring -> TOP 15
-Step  6  Filter rejected targets                3+ rejections = blacklisted
-Step  7  Loom_Composite::format_for_prompt()    Build target list with alerts, GSC, keywords
-Step  8  Loom_Suggester::get_system_prompt()    1087-word system prompt (patents, examples)
-Step  9  Loom_Suggester::build_user_prompt()    Paragraphs + targets + context
-Step 10  Loom_OpenAI::chat()                    gpt-4o-mini, temp 0.3, strict JSON schema
-Step 11  Validate: anchor in paragraph          mb_strpos check
-Step 12  Validate: anchor in post_content       Cross-check raw HTML
-Step 13  Loom_Analyzer::enrich_suggestions()    Reasonable Surfer + match scores
-Step 14  Return JSON -> user sees cards          Approve/reject UI
-Step 15  Loom_Linker::insert_link()             Insert <a> (safety: not inside <a>/<h1-6>)
-Step 16  Loom_DB::recalc_counters()             Update counts + orphan status
+Step  4  Loom_Similarity::find_similar()        64D cosine pre-filter → 512D dot product
+                                                 TOP 50 → TOP 30
+Step  5  Paragraph-level embeddings             Embed top 5 paragraphs of source article
+                                                 Match each target → best paragraph + similarity
+Step  6  Loom_Composite::rank_targets()         11-dimensional scoring → TOP 15
+                                                 Includes: topical authority + placement quality
+Step  7  Filter rejected targets                3+ rejections = blacklisted
+Step  8  Loom_Composite::format_for_prompt()    Targets with alerts, GSC, keywords, anchor
+                                                 profiles, paragraph match hints
+Step  9  Loom_Suggester::get_system_prompt()    System prompt (patents, anchor diversity rules)
+Step 10  Loom_Suggester::build_user_prompt()    Paragraphs + targets + context
+Step 11  Loom_OpenAI::chat()                    gpt-4o-mini, temp 0.3, strict JSON schema
+Step 12  Validate: anchor in paragraph          mb_strpos check
+Step 13  Validate: anchor in post_content       Cross-check raw HTML
+Step 14  Loom_Analyzer::enrich_suggestions()    Reasonable Surfer + match scores
+Step 15  Return JSON → user sees cards          Approve/reject UI
+Step 16  Loom_Linker::insert_link()             Insert <a> (safety: not inside <a>/<h1-6>)
+Step 17  Loom_DB::recalc_counters()             Update counts + orphan status
 ```
 
-Timing: ~200ms local + 2-4s API. Cost: ~$0.001 per request.
+Timing: ~200ms local + 2-4s API + ~1s paragraph embeddings. Cost: ~$0.0015 per request.
 
 ---
 
@@ -176,7 +180,7 @@ Cached aggregates: avg PageRank + avg outlinks computed once per request (static
 
 Max 7 per post. Deduplication via substring overlap. TF-IDF built in 100-post batches.
 
-### 6. Composite Scoring (9 Dimensions)
+### 6. Composite Scoring (11 Dimensions)
 
 **Class:** `Loom_Composite` · 398 lines
 
@@ -202,9 +206,9 @@ Weights configurable via UI sliders. Auto-normalized to sum 1.0.
 
 ### 7. AI Suggestion Engine
 
-**Class:** `Loom_Suggester` · 590 lines · Model: `gpt-4o-mini`, temp 0.3, Structured Outputs
+**Class:** `Loom_Suggester` · 604 lines · Model: `gpt-4o-mini`, temp 0.3, Structured Outputs
 
-System prompt (1087 words): 4 SEO principles from Google patents, 5-step analysis process, money page + striking distance instructions, 3 few-shot examples, 7 "Common Mistakes to Avoid".
+System prompt: 4 SEO principles from Google patents, 5-step analysis process, money page + striking distance instructions, paragraph-level placement hints, anchor diversity control rules, 3 few-shot examples, 7 "Common Mistakes to Avoid".
 
 JSON schema: `analysis` (chain-of-thought: topics + target evaluation) -> `suggestions` (paragraph, anchor, target, reason, priority). `strict: true` guarantees valid JSON.
 
@@ -295,7 +299,7 @@ Click depth via BFS from homepage. Site tiers: 0=homepage, 1=pillar, 2=category,
 | **🎯 Striking Distance** | Pages at position 5-20 sorted by proximity, impressions, CTR, top query |
 | **🕸️ Graph** | Force-directed canvas with 7 node types and directional arrows |
 | **📋 Posts** | Filterable table (6 filters), 10 columns, ⭐ money toggle, keyword tags |
-| **⚙️ Settings** | 9 weight sliders with live sum, GSC status, general settings |
+| **⚙️ Settings** | 11 weight sliders with live sum, GSC status, general settings |
 
 ---
 
@@ -334,7 +338,7 @@ Per-post panel below the editor:
 | Endpoint | Cap | Description |
 |----------|-----|-------------|
 | `loom_batch_scan` | manage_options | Scan posts in batches of 20 |
-| `loom_podlinkuj` | edit_posts | Full 16-step suggestion pipeline |
+| `loom_podlinkuj` | edit_posts | Full 17-step suggestion pipeline |
 | `loom_apply_links` | edit_posts | Insert approved links |
 | `loom_auto_podlinkuj` | edit_posts | Auto-insert high+medium |
 | `loom_save_settings` | manage_options | Save settings and weights |
@@ -404,10 +408,10 @@ loom/
 │
 ├── admin/
 │   ├── class-loom-admin.php     113 ln   Menu, assets, orphan notice
-│   ├── class-loom-dashboard.php 459 ln   6-tab dashboard
+│   ├── class-loom-dashboard.php 460 ln   6-tab dashboard
 │   ├── class-loom-metabox.php   195 ln   Per-post panel (GSC, keywords, anchors)
 │   ├── class-loom-bulk.php      126 ln   Multi-post management
-│   ├── class-loom-settings.php  320 ln   API keys, GSC connect, weights, danger zone
+│   ├── class-loom-settings.php  324 ln   API keys, GSC connect, weights, danger zone
 │   └── class-loom-onboarding.php 19 ln   Placeholder
 │
 └── includes/
@@ -415,12 +419,12 @@ loom/
     ├── class-loom-db.php        444 ln   All DB operations (28 methods)
     ├── class-loom-scanner.php   215 ln   Content crawl, <a> parsing
     ├── class-loom-openai.php    231 ln   Embeddings + chat with retry
-    ├── class-loom-similarity.php 242 ln  Two-stage 64D->512D search
+    ├── class-loom-similarity.php 240 ln  Two-stage 64D->512D search
     ├── class-loom-graph.php     589 ln   PageRank, betweenness, components
     ├── class-loom-gsc.php       603 ln   Service Account JWT auth + sync + scoring
     ├── class-loom-keywords.php  455 ln   5-layer extraction
     ├── class-loom-composite.php 398 ln   11-dimensional scoring with topical authority
-    ├── class-loom-suggester.php 590 ln   System prompt, paragraph embeddings, user prompt, JSON schema
+    ├── class-loom-suggester.php 604 ln   System prompt, paragraph embeddings, user prompt, JSON schema
     ├── class-loom-analyzer.php   79 ln   Reasonable Surfer + anchor mismatch
     ├── class-loom-linker.php    408 ln   Link insertion + removal
     └── class-loom-site-analysis.php 161 ln  Click depth, cannibalization, rejections

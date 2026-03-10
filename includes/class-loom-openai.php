@@ -51,6 +51,49 @@ class Loom_OpenAI {
 	}
 
 	/**
+	 * Generate embeddings for multiple texts in a SINGLE API call.
+	 *
+	 * @param array  $texts   Array of text strings.
+	 * @param string $api_key API key.
+	 * @return array|WP_Error  Array of vectors (same order as input) or error.
+	 */
+	public static function get_embeddings_batch( $texts, $api_key = '' ) {
+		if ( empty( $api_key ) ) {
+			$api_key = Loom_DB::get_api_key();
+		}
+		if ( empty( $texts ) ) return array();
+
+		// Truncate each text.
+		$inputs = array();
+		foreach ( $texts as $text ) {
+			$words = explode( ' ', $text );
+			if ( count( $words ) > 500 ) {
+				$text = implode( ' ', array_slice( $words, 0, 500 ) );
+			}
+			$inputs[] = $text;
+		}
+
+		$response = self::request( 'embeddings', array(
+			'model'      => self::EMBED_MODEL,
+			'input'      => $inputs,
+			'dimensions' => self::EMBED_DIMS,
+		), $api_key );
+
+		if ( is_wp_error( $response ) ) return $response;
+
+		$vectors = array();
+		foreach ( $response['data'] ?? array() as $item ) {
+			$vectors[] = $item['embedding'] ?? array();
+		}
+
+		$tokens = $response['usage']['total_tokens'] ?? 0;
+		$cost   = $tokens * 0.00000002;
+		Loom_DB::log( 'embed_batch', null, array( 'count' => count( $texts ), 'tokens' => $tokens ), $tokens, $cost );
+
+		return $vectors;
+	}
+
+	/**
 	 * Send chat completion request.
 	 *
 	 * @return array|WP_Error  Parsed response or error.

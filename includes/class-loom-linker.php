@@ -45,7 +45,7 @@ class Loom_Linker {
 
 			if ( empty( $anchor ) || empty( $url ) ) continue;
 
-			$new_content = self::insert_link( $content, $anchor, $url );
+			$new_content = self::insert_link( $content, $anchor, $url, intval( $link["paragraph_number"] ?? 0 ) );
 			if ( $new_content !== $content ) {
 				$content = $new_content;
 				$inserted++;
@@ -104,9 +104,43 @@ class Loom_Linker {
 	 * @param string $target_url  URL to link to.
 	 * @return string             Modified content (or unchanged if anchor not found / already linked).
 	 */
-	public static function insert_link( $content, $anchor_text, $target_url ) {
-		// Find anchor text position.
-		$pos = mb_strpos( $content, $anchor_text );
+	/**
+	 * Insert a single link into content.
+	 *
+	 * @param string $content        Post content (HTML).
+	 * @param string $anchor_text    Exact text to wrap in <a>.
+	 * @param string $target_url     URL to link to.
+	 * @param int    $paragraph_hint 1-based paragraph number hint (0 = use first occurrence).
+	 * @return string                Modified content (or unchanged if anchor not found / already linked).
+	 */
+	public static function insert_link( $content, $anchor_text, $target_url, $paragraph_hint = 0 ) {
+		// If we have a paragraph hint, try to find the occurrence nearest to that paragraph.
+		$pos = false;
+		if ( $paragraph_hint > 0 ) {
+			// Split content by block-level tags to estimate paragraph positions.
+			$parts = preg_split( '/(<\/?(?:p|div|li|blockquote|h[1-6])[^>]*>)/i', $content );
+			$char_offset = 0;
+			$para_count  = 0;
+			$target_offset = 0;
+			foreach ( $parts as $part ) {
+				if ( preg_match( '/^<(p|div|li|blockquote)\b/i', $part ) ) {
+					$para_count++;
+				}
+				if ( $para_count >= $paragraph_hint && $target_offset === 0 ) {
+					$target_offset = $char_offset;
+				}
+				$char_offset += mb_strlen( $part );
+			}
+			// Search from the target offset.
+			if ( $target_offset > 0 ) {
+				$pos = mb_strpos( $content, $anchor_text, max( 0, $target_offset - 200 ) );
+			}
+		}
+
+		// Fallback: first occurrence.
+		if ( $pos === false ) {
+			$pos = mb_strpos( $content, $anchor_text );
+		}
 		if ( $pos === false ) {
 			return $content;
 		}
@@ -189,7 +223,9 @@ class Loom_Linker {
 
 		// ─── Step 2: Embedding ───
 		if ( empty( $source['embedding'] ) ) {
-			$input  = $source['post_title'] . ' | ' . mb_substr( $source['clean_text'], 0, 3000 );
+			$title  = $source['post_title'];
+			$input  = $title . ' | ' . $title . ' | ' . $title
+			        . ' | ' . mb_substr( $source['clean_text'], 0, 2500 );
 			$vector = Loom_OpenAI::get_embedding( $input, $api_key );
 			if ( is_wp_error( $vector ) ) {
 				wp_send_json_error( $vector->get_error_message() );
@@ -266,7 +302,7 @@ class Loom_Linker {
 			$url    = $link['target_url']  ?? '';
 			if ( empty( $anchor ) || empty( $url ) ) continue;
 
-			$new_content = self::insert_link( $content, $anchor, $url );
+			$new_content = self::insert_link( $content, $anchor, $url, intval( $link["paragraph_number"] ?? 0 ) );
 			if ( $new_content !== $content ) {
 				$content = $new_content;
 				$inserted++;
@@ -355,7 +391,7 @@ class Loom_Linker {
 
 		$removed_total = 0;
 		$posts_fixed   = 0;
-		remove_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ) );
+		remove_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20 );
 
 		foreach ( $by_post as $post_id => $links ) {
 			$post = get_post( $post_id );
@@ -371,7 +407,8 @@ class Loom_Linker {
 				if ( empty( $anchor ) ) continue;
 
 				$escaped = preg_quote( $anchor, '/' );
-				$pattern = '/<a\s[^>]*>' . $escaped . '<\/a>/i';
+				// Match <a ...>anchor</a> — also handles nested tags like <strong>anchor</strong>.
+				$pattern = '/<a\s[^>]*>(?:<[^>]*>)*' . $escaped . '(?:<\/[^>]*>)*<\/a>/i';
 				$new     = preg_replace( $pattern, $anchor, $content, 1, $count );
 				if ( $count > 0 ) { $content = $new; $removed++; }
 			}
@@ -393,7 +430,7 @@ class Loom_Linker {
 			}
 		}
 
-		add_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 10, 2 );
+		add_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20, 3 );
 
 		Loom_DB::log( 'remove_all_loom_links', null, array(
 			'removed' => $removed_total, 'posts' => $posts_fixed,

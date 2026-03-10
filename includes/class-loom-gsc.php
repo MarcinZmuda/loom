@@ -522,6 +522,8 @@ class Loom_GSC {
 	private static function get_site_url() {
 		$url = get_option( 'loom_gsc_site_url', '' );
 		if ( empty( $url ) ) $url = home_url();
+		// Normalize: trim whitespace, ensure trailing slash, then encode.
+		$url = rtrim( trim( $url ), '/' ) . '/';
 		return urlencode( $url );
 	}
 

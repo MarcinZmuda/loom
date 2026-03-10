@@ -11,7 +11,7 @@ class Loom_Composite {
 	 * @return float          Composite score (higher = better target).
 	 */
 	public static function score( $source, $target ) {
-		$settings = Loom_DB::get_settings();
+		$settings = self::$settings_cache ?? Loom_DB::get_settings();
 		$weights  = array(
 			'semantic'  => floatval( $settings['weight_semantic']  ?? 0.22 ),
 			'orphan'    => floatval( $settings['weight_orphan']    ?? 0.08 ),
@@ -72,14 +72,18 @@ class Loom_Composite {
 		$tgt_cluster   = $target['cluster_id'] ?? null;
 		$tgt_post_id   = intval( $target['post_id'] ?? 0 );
 
-		// Check if target is the pillar page of its cluster (from loom_clusters table).
+		// Check if target is the pillar page of its cluster (batch-cached in rank_targets).
 		$tgt_is_pillar = false;
 		if ( $tgt_cluster && $tgt_post_id > 0 ) {
-			global $wpdb;
-			$pillar_pid = (int) $wpdb->get_var( $wpdb->prepare(
-				"SELECT pillar_post_id FROM {$wpdb->prefix}loom_clusters WHERE id = %d",
-				intval( $tgt_cluster )
-			) );
+			$pillar_pid = self::$pillar_cache[ intval( $tgt_cluster ) ] ?? 0;
+			if ( ! $pillar_pid ) {
+				// Fallback for direct score() calls outside rank_targets().
+				global $wpdb;
+				$pillar_pid = (int) $wpdb->get_var( $wpdb->prepare(
+					"SELECT pillar_post_id FROM {$wpdb->prefix}loom_clusters WHERE id = %d",
+					intval( $tgt_cluster )
+				) );
+			}
 			$tgt_is_pillar = ( $pillar_pid === $tgt_post_id );
 		}
 
@@ -97,8 +101,12 @@ class Loom_Composite {
 		// Unlike orphan_boost (binary: has/hasn't links), this measures RATE:
 		// old page with few links = high need, new page with few links = normal.
 		// Uses actual post_date (publication date), NOT last_scanned (which resets on every scan).
-		$tgt_post = get_post( intval( $target['post_id'] ?? 0 ) );
-		$post_date = $tgt_post ? $tgt_post->post_date : null;
+		$tgt_pid   = intval( $target['post_id'] ?? 0 );
+		$post_date = self::$post_date_cache[ $tgt_pid ] ?? null;
+		if ( ! $post_date ) {
+			$tgt_post  = get_post( $tgt_pid );
+			$post_date = $tgt_post ? $tgt_post->post_date : null;
+		}
 		$age_days  = $post_date ? max( 1, ( time() - strtotime( $post_date ) ) / 86400 ) : 90;
 		$age_months = max( 1, $age_days / 30 );
 		$links_per_month = $incoming / $age_months;
@@ -232,15 +240,20 @@ class Loom_Composite {
 
 		// 1. Incoming links from same cluster (max 0.4).
 		if ( $cluster_id ) {
-			global $wpdb;
-			$lnk = Loom_DB::links_table();
-			$idx = Loom_DB::index_table();
-			$cluster_links = (int) $wpdb->get_var( $wpdb->prepare(
-				"SELECT COUNT(*) FROM {$lnk} l
-				 JOIN {$idx} i ON l.source_post_id = i.post_id
-				 WHERE l.target_post_id = %d AND i.cluster_id = %d",
-				$tgt_id, intval( $cluster_id )
-			) );
+			$cache_key = $tgt_id . '-' . intval( $cluster_id );
+			$cluster_links = self::$cluster_link_cache[ $cache_key ] ?? 0;
+			if ( ! $cluster_links ) {
+				// Fallback for direct calls outside rank_targets().
+				global $wpdb;
+				$lnk = Loom_DB::links_table();
+				$idx = Loom_DB::index_table();
+				$cluster_links = (int) $wpdb->get_var( $wpdb->prepare(
+					"SELECT COUNT(*) FROM {$lnk} l
+					 JOIN {$idx} i ON l.source_post_id = i.post_id
+					 WHERE l.target_post_id = %d AND i.cluster_id = %d",
+					$tgt_id, intval( $cluster_id )
+				) );
+			}
 			$score += min( 0.4, $cluster_links * 0.1 );
 		}
 
@@ -262,6 +275,12 @@ class Loom_Composite {
 		return max( 0.0, min( 1.0, $score ) );
 	}
 
+	/** @var array Batch caches, populated by rank_targets(). */
+	private static $post_date_cache   = array();
+	private static $cluster_link_cache = array();
+	private static $pillar_cache       = array();
+	private static $settings_cache     = null;
+
 	/**
 	 * Build TOP N targets sorted by composite score.
 	 *
@@ -271,6 +290,53 @@ class Loom_Composite {
 	 * @return array
 	 */
 	public static function rank_targets( $source_data, $similar_targets, $top_n = 15 ) {
+		// ── Batch prefetch to eliminate N+1 queries ──
+		self::$settings_cache = Loom_DB::get_settings();
+
+		$ids = wp_list_pluck( $similar_targets, 'post_id' );
+		$ids = array_map( 'intval', $ids );
+
+		// PERF-1: Prefetch post dates (for velocity dimension).
+		_prime_post_caches( $ids, false, false );
+		foreach ( $ids as $pid ) {
+			$p = get_post( $pid );
+			self::$post_date_cache[ $pid ] = $p ? $p->post_date : null;
+		}
+
+		// PERF-2: Batch cluster links count.
+		if ( ! empty( $ids ) ) {
+			global $wpdb;
+			$lnk = Loom_DB::links_table();
+			$idx  = Loom_DB::index_table();
+			$ids_str = implode( ',', $ids );
+			$rows = $wpdb->get_results(
+				"SELECT l.target_post_id AS pid, i.cluster_id AS cid, COUNT(*) AS cnt
+				 FROM {$lnk} l
+				 JOIN {$idx} i ON l.source_post_id = i.post_id
+				 WHERE l.target_post_id IN ({$ids_str}) AND i.cluster_id IS NOT NULL
+				 GROUP BY l.target_post_id, i.cluster_id", ARRAY_A
+			); // phpcs:ignore -- $ids are intval'd above.
+			foreach ( $rows as $r ) {
+				$key = intval( $r['pid'] ) . '-' . intval( $r['cid'] );
+				self::$cluster_link_cache[ $key ] = intval( $r['cnt'] );
+			}
+		}
+
+		// PERF-3: Batch pillar page lookup.
+		$cluster_ids = array_filter( array_unique( wp_list_pluck( $similar_targets, 'cluster_id' ) ) );
+		if ( ! empty( $cluster_ids ) ) {
+			global $wpdb;
+			$cids_str = implode( ',', array_map( 'intval', $cluster_ids ) );
+			$pillars = $wpdb->get_results(
+				"SELECT id, pillar_post_id FROM {$wpdb->prefix}loom_clusters WHERE id IN ({$cids_str})",
+				ARRAY_A
+			); // phpcs:ignore
+			foreach ( $pillars as $pc ) {
+				self::$pillar_cache[ intval( $pc['id'] ) ] = intval( $pc['pillar_post_id'] );
+			}
+		}
+
+		// ── Score each target ──
 		$scored = array();
 
 		foreach ( $similar_targets as $target ) {

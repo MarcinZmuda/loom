@@ -581,7 +581,7 @@ PROMPT;
 		$indexed = array();
 		foreach ( $paragraphs as $i => $p ) {
 			$wc = str_word_count( $p );
-			if ( $wc >= 20 ) { // Skip very short paragraphs.
+			if ( $wc >= 20 ) {
 				$indexed[] = array( 'index' => $i, 'text' => $p, 'wc' => $wc );
 			}
 		}
@@ -590,12 +590,18 @@ PROMPT;
 
 		if ( empty( $to_embed ) ) return array();
 
+		// Single batch API call instead of N separate calls.
+		$texts = array_map( function( $item ) {
+			return mb_substr( $item['text'], 0, 500 );
+		}, $to_embed );
+
+		$vectors = Loom_OpenAI::get_embeddings_batch( $texts, $api_key );
+		if ( is_wp_error( $vectors ) || empty( $vectors ) ) return array();
+
 		$result = array();
-		foreach ( $to_embed as $item ) {
-			$input = mb_substr( $item['text'], 0, 500 ); // 500 chars max per paragraph.
-			$emb   = Loom_OpenAI::get_embedding( $input, $api_key );
-			if ( ! is_wp_error( $emb ) ) {
-				$result[ $item['index'] ] = $emb;
+		foreach ( $to_embed as $i => $item ) {
+			if ( ! empty( $vectors[ $i ] ) ) {
+				$result[ $item['index'] ] = $vectors[ $i ];
 			}
 		}
 

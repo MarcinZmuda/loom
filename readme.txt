@@ -85,6 +85,14 @@ No. Zero frontend scripts. Admin panel only.
 * Placement quality dimension (Reasonable Surfer in scoring)
 * 11-dimensional composite scoring with weight sliders
 
+= 2.3.0 =
+* Paragraph-level intent matching (5 paragraph embeddings per request)
+* Topical authority dimension (cluster links + relative PageRank + keyword depth)
+* Placement quality dimension (Reasonable Surfer at scoring level)
+* Anchor diversity control for ALL targets (exact/partial/contextual/generic profile)
+* 11-dimensional composite scoring (was 9)
+* System prompt: paragraph placement hints + anchor diversity rules
+
 = 2.2.0 =
 * Google Search Console integration (Service Account)
 * Money page system with anchor distribution monitoring
@@ -97,6 +105,14 @@ No. Zero frontend scripts. Admin panel only.
 * GPT-4o-mini Structured Outputs
 
 == Upgrade Notice ==
+
+= 2.3.0 =
+* Paragraph-level intent matching (5 paragraph embeddings per request)
+* Topical authority dimension (cluster links + relative PageRank + keyword depth)
+* Placement quality dimension (Reasonable Surfer at scoring level)
+* Anchor diversity control for ALL targets (exact/partial/contextual/generic profile)
+* 11-dimensional composite scoring (was 9)
+* System prompt: paragraph placement hints + anchor diversity rules
 
 = 2.2.0 =
 Major release with GSC, graph engine, 11-dimensional scoring.
