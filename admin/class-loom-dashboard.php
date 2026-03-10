@@ -279,20 +279,30 @@ class Loom_Dashboard {
 			<div class="loom-card-header">
 				<h2>🕸️ <?php esc_html_e( 'Mapa powiązań', 'loom' ); ?></h2>
 				<div style="display:flex;gap:8px;align-items:center">
-					<div class="loom-map-legend">
-						<span><span class="loom-dot" style="background:var(--l)"></span> Hub</span>
-						<span><span class="loom-dot" style="background:var(--muted)"></span> Normal</span>
-						<span><span class="loom-dot" style="background:var(--bad)"></span> Orphan</span>
-						<span><span class="loom-dot" style="background:var(--warn)"></span> Dead End</span>
-						<span><span class="loom-dot" style="background:#3b82f6"></span> Bridge</span>
-						<span><span class="loom-dot" style="background:var(--purple)"></span> Striking</span>
-						<span><span class="loom-dot" style="background:#eab308"></span> Money</span>
+					<div class="loom-graph-views">
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn active" data-view="rings">🎯 <?php esc_html_e( 'Pierścienie', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="table">📋 <?php esc_html_e( 'Lista', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="matrix">📊 <?php esc_html_e( 'Macierz', 'loom' ); ?></button>
 					</div>
 					<button class="loom-btn loom-btn-sm loom-btn-outline" id="loom-recalc-graph">🔄</button>
 				</div>
 			</div>
-			<canvas id="loom-link-map" width="1100" height="380"></canvas>
-			<p class="loom-map-hint"><?php esc_html_e( 'Rozmiar = linki IN · Kolor = typ · Teal lines = LOOM', 'loom' ); ?></p>
+			<!-- Rings view -->
+			<div id="loom-view-rings" class="loom-graph-panel">
+				<canvas id="loom-link-map" width="1100" height="460"></canvas>
+				<p class="loom-map-hint"><?php esc_html_e( 'Kliknij stronę → zobacz jej połączenia. Ringi = hierarchia (Homepage → Pillar → Kategoria → Artykuł).', 'loom' ); ?></p>
+			</div>
+			<!-- Table view -->
+			<div id="loom-view-table" class="loom-graph-panel" style="display:none">
+				<div style="display:flex;gap:16px;padding:16px;min-height:440px">
+					<div id="loom-table-list" style="flex:0 0 420px;max-height:440px;overflow-y:auto"></div>
+					<div id="loom-table-detail" style="flex:1;min-width:280px"></div>
+				</div>
+			</div>
+			<!-- Matrix view -->
+			<div id="loom-view-matrix" class="loom-graph-panel" style="display:none">
+				<div id="loom-matrix-container" style="overflow-x:auto;padding:16px"></div>
+			</div>
 		</div>
 
 		<?php // ═══ POSTS TAB ═══

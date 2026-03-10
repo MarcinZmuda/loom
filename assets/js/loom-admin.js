@@ -681,21 +681,35 @@
 	}
 
 	/* =======================================================================
-	   LINK MAP  -  Force-directed graph on Canvas
+	   LINK MAP  -  Multi-view graph (Rings / Table / Matrix)
 	   ======================================================================= */
 	var canvas = document.getElementById('loom-link-map');
 	if (canvas) {
 		var ctx = canvas.getContext('2d');
 		var W, H, dpr;
-		var nodes = [], edges = [];
-		var dragging = null, dragOffX = 0, dragOffY = 0;
-		var hoveredNode = null;
+		var graphNodes = [], graphEdges = [], nodeMap = {};
+		var selectedNode = null, hoveredNode = null;
+		var currentView = 'rings';
+		var TIER_LABELS = ['Homepage', 'Pillar', 'Kategoria', 'Artykuł'];
+		var TIER_COLORS = ['#0d9488', '#0ea5e9', '#8b5cf6', '#94a3b8'];
+
+		// ─── View switcher ───
+		$(document).on('click', '.loom-graph-view-btn', function() {
+			$('.loom-graph-view-btn').removeClass('active');
+			$(this).addClass('active');
+			currentView = $(this).data('view');
+			$('.loom-graph-panel').hide();
+			$('#loom-view-' + currentView).show();
+			if (currentView === 'rings') drawRings();
+			if (currentView === 'table') renderTable();
+			if (currentView === 'matrix') renderMatrix();
+		});
 
 		function resizeCanvas() {
 			dpr = window.devicePixelRatio || 1;
 			var rect = canvas.parentElement.getBoundingClientRect();
 			W = rect.width;
-			H = 380;
+			H = 460;
 			canvas.width = W * dpr;
 			canvas.height = H * dpr;
 			canvas.style.width = W + 'px';
@@ -703,245 +717,356 @@
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		}
 		resizeCanvas();
-		window.addEventListener('resize', function() { resizeCanvas(); draw(); });
+		window.addEventListener('resize', function() { resizeCanvas(); if (currentView === 'rings') positionNodes(); drawRings(); });
 
 		// Load data.
 		$.ajax({
-			url: loom_ajax.ajaxurl,
-			type: 'POST',
+			url: loom_ajax.ajaxurl, type: 'POST',
 			data: { action: 'loom_get_link_map', nonce: loom_ajax.nonce },
 			success: function(res) {
 				if (!res.success) return;
-				initGraph(res.data.nodes, res.data.edges);
+				graphNodes = res.data.nodes;
+				graphEdges = res.data.edges;
+				nodeMap = {};
+				graphNodes.forEach(function(n) { nodeMap[n.id] = n; });
+				positionNodes();
+				drawRings();
 			}
 		});
 
-		function initGraph(rawNodes, rawEdges) {
-			var nodeMap = {};
-			rawNodes.forEach(function(n, i) {
-				var angle = (i / rawNodes.length) * Math.PI * 2;
-				var r = Math.min(W, H) * 0.35;
-				n.x = W / 2 + Math.cos(angle) * r * (0.6 + Math.random() * 0.4);
-				n.y = H / 2 + Math.sin(angle) * r * (0.6 + Math.random() * 0.4);
-				n.vx = 0; n.vy = 0;
-				n.radius = Math.max(5, Math.min(22, 4 + n.in * 1.5));
-				nodeMap[n.id] = n;
-			});
-			nodes = rawNodes;
-			edges = rawEdges.filter(function(e) { return nodeMap[e.from] && nodeMap[e.to]; });
+		// ═══════════════════════════════════════════════
+		//  VIEW 1: CONCENTRIC RINGS
+		// ═══════════════════════════════════════════════
+		function positionNodes() {
+			var CX = W / 2, CY = H / 2;
+			var maxR = Math.min(W, H) * 0.42;
+			var rings = [0, maxR * 0.28, maxR * 0.58, maxR];
 
-			// Run simulation.
-			var iterations = 120;
-			for (var iter = 0; iter < iterations; iter++) {
-				simulate(0.15 * (1 - iter / iterations));
-			}
-			draw();
-		}
-
-		function simulate(alpha) {
-			var k = Math.sqrt((W * H) / Math.max(nodes.length, 1));
-
-			// Repulsion.
-			for (var i = 0; i < nodes.length; i++) {
-				for (var j = i + 1; j < nodes.length; j++) {
-					var dx = nodes[j].x - nodes[i].x;
-					var dy = nodes[j].y - nodes[i].y;
-					var d = Math.sqrt(dx * dx + dy * dy) || 1;
-					var force = (k * k) / d * alpha;
-					var fx = (dx / d) * force;
-					var fy = (dy / d) * force;
-					nodes[i].x -= fx; nodes[i].y -= fy;
-					nodes[j].x += fx; nodes[j].y += fy;
-				}
-			}
-
-			// Attraction (edges).
-			var nodeMap = {};
-			nodes.forEach(function(n) { nodeMap[n.id] = n; });
-			edges.forEach(function(e) {
-				var a = nodeMap[e.from], b = nodeMap[e.to];
-				if (!a || !b) return;
-				var dx = b.x - a.x, dy = b.y - a.y;
-				var d = Math.sqrt(dx * dx + dy * dy) || 1;
-				var force = (d - k * 0.5) * alpha * 0.08;
-				var fx = (dx / d) * force, fy = (dy / d) * force;
-				a.x += fx; a.y += fy;
-				b.x -= fx; b.y -= fy;
+			var byTier = [[], [], [], []];
+			graphNodes.forEach(function(n) {
+				var t = Math.min(3, Math.max(0, n.tier || 3));
+				byTier[t].push(n);
 			});
 
-			// Center gravity.
-			nodes.forEach(function(n) {
-				n.x += (W / 2 - n.x) * alpha * 0.05;
-				n.y += (H / 2 - n.y) * alpha * 0.05;
-				// Bounds.
-				n.x = Math.max(n.radius + 5, Math.min(W - n.radius - 5, n.x));
-				n.y = Math.max(n.radius + 5, Math.min(H - n.radius - 5, n.y));
+			graphNodes.forEach(function(n) {
+				var t = Math.min(3, Math.max(0, n.tier || 3));
+				var siblings = byTier[t];
+				var idx = siblings.indexOf(n);
+				var count = siblings.length;
+				n.radius = Math.max(5, Math.min(20, 4 + n['in'] * 1.2));
+
+				if (t === 0) { n.gx = CX; n.gy = CY; return; }
+
+				var angleStep = (Math.PI * 2) / count;
+				var angle = angleStep * idx - Math.PI / 2;
+				n.gx = CX + Math.cos(angle) * rings[t];
+				n.gy = CY + Math.sin(angle) * rings[t];
 			});
 		}
 
-		function draw() {
+		function getNodeStyle(n) {
+			var fill, stroke;
+			if (n.orphan) { fill = '#fee2e2'; stroke = '#ef4444'; }
+			else if (n.money) { fill = '#fef9c3'; stroke = '#eab308'; }
+			else if (n.striking) { fill = '#f3e8ff'; stroke = '#a855f7'; }
+			else if (n.dead_end) { fill = '#fef3c7'; stroke = '#f59e0b'; }
+			else if (n.bridge) { fill = '#e0f2fe'; stroke = '#3b82f6'; }
+			else if (n['in'] >= 8) { fill = '#ccfbf1'; stroke = '#0d9488'; }
+			else { fill = '#f0fdfa'; stroke = TIER_COLORS[Math.min(3, n.tier || 3)]; }
+			return { fill: fill, stroke: stroke };
+		}
+
+		function drawRings() {
 			ctx.clearRect(0, 0, W, H);
-			var nodeMap = {};
-			nodes.forEach(function(n) { nodeMap[n.id] = n; });
+			var CX = W / 2, CY = H / 2;
+			var maxR = Math.min(W, H) * 0.42;
+			var rings = [0, maxR * 0.28, maxR * 0.58, maxR];
 
-			// Draw edges.
-			edges.forEach(function(e) {
+			// Tier ring guides.
+			for (var r = 1; r <= 3; r++) {
+				ctx.beginPath();
+				ctx.arc(CX, CY, rings[r], 0, Math.PI * 2);
+				ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+				ctx.stroke(); ctx.setLineDash([]);
+				ctx.font = '9px -apple-system, sans-serif';
+				ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'start';
+				ctx.fillText(TIER_LABELS[r], CX + rings[r] - 50, CY - rings[r] + 14);
+			}
+
+			// Edges — only for selected node.
+			var selEdges = [];
+			if (selectedNode) {
+				selEdges = graphEdges.filter(function(e) { return e.from === selectedNode || e.to === selectedNode; });
+			}
+			selEdges.forEach(function(e) {
 				var a = nodeMap[e.from], b = nodeMap[e.to];
 				if (!a || !b) return;
 				ctx.beginPath();
-				ctx.moveTo(a.x, a.y);
-				ctx.lineTo(b.x, b.y);
-				ctx.strokeStyle = e.loom ? '#008080' : '#cbd5e1';
-				ctx.lineWidth = e.loom ? 1.5 : 0.7;
-				ctx.globalAlpha = e.loom ? 0.6 : 0.3;
+				ctx.moveTo(a.gx, a.gy); ctx.lineTo(b.gx, b.gy);
+				ctx.strokeStyle = e.loom ? '#0d9488' : '#94a3b8';
+				ctx.lineWidth = e.loom ? 2.5 : 1;
+				ctx.globalAlpha = e.loom ? 0.7 : 0.4;
 				ctx.stroke();
-				ctx.globalAlpha = 1;
 
-				// Arrow.
+				// Arrow for LOOM links.
 				if (e.loom) {
-					var angle = Math.atan2(b.y - a.y, b.x - a.x);
-					var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+					var angle = Math.atan2(b.gy - a.gy, b.gx - a.gx);
+					var mx = (a.gx + b.gx) / 2, my = (a.gy + b.gy) / 2;
 					ctx.beginPath();
 					ctx.moveTo(mx + 5 * Math.cos(angle), my + 5 * Math.sin(angle));
 					ctx.lineTo(mx - 4 * Math.cos(angle - 0.5), my - 4 * Math.sin(angle - 0.5));
 					ctx.lineTo(mx - 4 * Math.cos(angle + 0.5), my - 4 * Math.sin(angle + 0.5));
-					ctx.fillStyle = '#008080';
-					ctx.globalAlpha = 0.5;
-					ctx.fill();
-					ctx.globalAlpha = 1;
+					ctx.fillStyle = '#0d9488'; ctx.fill();
 				}
+				ctx.globalAlpha = 1;
 			});
 
-			// Draw nodes.
-			nodes.forEach(function(n) {
-				var isHovered = hoveredNode && hoveredNode.id === n.id;
-				ctx.beginPath();
-				ctx.arc(n.x, n.y, n.radius + (isHovered ? 3 : 0), 0, Math.PI * 2);
+			// Nodes.
+			graphNodes.forEach(function(n) {
+				var isSelected = n.id === selectedNode;
+				var isConnected = selEdges.some(function(e) { return e.from === n.id || e.to === n.id; });
+				var dimmed = selectedNode && !isSelected && !isConnected;
+				var isHover = hoveredNode && hoveredNode.id === n.id;
+				var style = getNodeStyle(n);
 
-				if (n.orphan) {
-					ctx.fillStyle = '#fee2e2';
-					ctx.strokeStyle = '#ef4444';
-				} else if (n.money) {
-					ctx.fillStyle = '#fef9c3';
-					ctx.strokeStyle = '#eab308';
-				} else if (n.striking) {
-					ctx.fillStyle = '#f3e8ff';
-					ctx.strokeStyle = '#a855f7';
-				} else if (n.dead_end) {
-					ctx.fillStyle = '#fef3c7';
-					ctx.strokeStyle = '#f59e0b';
-				} else if (n.bridge) {
-					ctx.fillStyle = '#e0f2fe';
-					ctx.strokeStyle = '#3b82f6';
-				} else if (n.in >= 10) {
-					ctx.fillStyle = '#ccfbf1';
-					ctx.strokeStyle = '#0d9488';
-				} else {
-					ctx.fillStyle = '#f0fdfa';
-					ctx.strokeStyle = '#14b8a6';
-				}
+				ctx.globalAlpha = dimmed ? 0.12 : 1;
 
-				// Money page glow.
-				if (n.money) {
-					ctx.save();
+				// Money glow.
+				if (n.money && !dimmed) {
 					ctx.beginPath();
-					ctx.arc(n.x, n.y, n.radius + 5, 0, Math.PI * 2);
+					ctx.arc(n.gx, n.gy, n.radius + 5, 0, Math.PI * 2);
 					ctx.fillStyle = 'rgba(234,179,8,.12)';
 					ctx.fill();
-					ctx.restore();
-					ctx.beginPath();
-					ctx.arc(n.x, n.y, n.radius + (isHovered ? 3 : 0), 0, Math.PI * 2);
 				}
 
-				ctx.lineWidth = isHovered ? 3 : 1.5;
-				ctx.fill();
-				ctx.stroke();
-
-				// Label.
-				if (n.radius > 7 || isHovered) {
-					ctx.font = (isHovered ? 'bold ' : '') + '10px -apple-system, sans-serif';
-					ctx.fillStyle = '#1e293b';
-					ctx.textAlign = 'center';
-					ctx.fillText(n.label, n.x, n.y + n.radius + 12);
-				}
-			});
-
-			// Tooltip.
-			if (hoveredNode) {
-				var n = hoveredNode;
-				var tw = 180, th = 74;
-				var tx = Math.min(n.x + 15, W - tw - 10);
-				var ty = Math.max(n.y - 15 - th, 10);
-
-				ctx.fillStyle = 'rgba(255,255,255,.95)';
-				ctx.strokeStyle = '#008080';
-				ctx.lineWidth = 1;
 				ctx.beginPath();
-				ctx.roundRect(tx, ty, tw, th, 6);
+				ctx.arc(n.gx, n.gy, n.radius + (isSelected ? 3 : isHover ? 2 : 0), 0, Math.PI * 2);
+				ctx.fillStyle = style.fill;
+				ctx.strokeStyle = style.stroke;
+				ctx.lineWidth = isSelected ? 3 : (isHover ? 2.5 : 1.5);
 				ctx.fill(); ctx.stroke();
 
-				ctx.font = 'bold 11px -apple-system, sans-serif';
-				ctx.fillStyle = '#1e293b';
+				// Label.
+				if ((n.radius > 7 || isSelected || isHover) && !dimmed) {
+					ctx.font = (isSelected || isHover ? 'bold ' : '') + '9px -apple-system, sans-serif';
+					ctx.fillStyle = '#1e293b'; ctx.textAlign = 'center';
+					var lbl = n.label.length > 20 ? n.label.substring(0, 18) + '…' : n.label;
+					ctx.fillText(lbl, n.gx, n.gy + n.radius + 12);
+				}
+				ctx.globalAlpha = 1;
+			});
+
+			// Info panel for selected node.
+			if (selectedNode && nodeMap[selectedNode]) {
+				var sn = nodeMap[selectedNode];
+				var inEdges = graphEdges.filter(function(e) { return e.to === selectedNode; });
+				var outEdges = graphEdges.filter(function(e) { return e.from === selectedNode; });
+				var tw = 200, th = 90;
+				var tx = 12, ty = 12;
+
+				ctx.fillStyle = 'rgba(255,255,255,.96)';
+				ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+				ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 8); ctx.fill(); ctx.stroke();
+
 				ctx.textAlign = 'left';
-				ctx.fillText(n.label, tx + 8, ty + 16);
-				ctx.font = '11px -apple-system, sans-serif';
+				ctx.font = 'bold 11px -apple-system, sans-serif';
+				ctx.fillStyle = '#0f172a';
+				ctx.fillText(sn.label, tx + 10, ty + 18);
+				ctx.font = '10px -apple-system, sans-serif';
 				ctx.fillStyle = '#64748b';
-				ctx.fillText('IN: ' + n.in + '  OUT: ' + n.out, tx + 8, ty + 32);
-				var prStr = n.pr ? 'PR: ' + (n.pr * 100).toFixed(1) : '';
-				ctx.fillText(prStr, tx + 8, ty + 48);
-				var status = n.orphan ? '🔴 Orphan' : n.money ? '⭐ Money Page' : n.striking ? '🎯 Striking' : n.dead_end ? '🟠 Dead End' : n.bridge ? '🌉 Bridge' : (n.in >= 10 ? '🟢 Hub' : '');
-				ctx.fillText(status, tx + 8, ty + 64);
+				ctx.fillText('IN: ' + sn['in'] + ' · OUT: ' + sn.out + ' · Tier: ' + TIER_LABELS[Math.min(3, sn.tier || 3)], tx + 10, ty + 34);
+				ctx.fillText('PR: ' + (sn.pr ? (sn.pr * 100).toFixed(1) : '—'), tx + 10, ty + 50);
+				var flags = [];
+				if (sn.orphan) flags.push('🔴 Orphan');
+				if (sn.money) flags.push('⭐ Money');
+				if (sn.striking) flags.push('🎯 Striking');
+				if (sn.dead_end) flags.push('🟠 Dead End');
+				if (sn.bridge) flags.push('🌉 Bridge');
+				ctx.fillText(flags.join(' ') || '✅ OK', tx + 10, ty + 66);
+				ctx.fillText('→ ' + inEdges.length + ' IN · ' + outEdges.length + ' OUT', tx + 10, ty + 82);
 			}
+
+			// Legend bar.
+			var lx = 10, ly = H - 18;
+			ctx.font = '9px -apple-system, sans-serif'; ctx.textAlign = 'left';
+			var legend = [
+				{ c: '#0d9488', l: 'Hub' }, { c: '#94a3b8', l: 'Normal' }, { c: '#ef4444', l: 'Orphan' },
+				{ c: '#f59e0b', l: 'Dead End' }, { c: '#3b82f6', l: 'Bridge' },
+				{ c: '#a855f7', l: 'Striking' }, { c: '#eab308', l: 'Money' }
+			];
+			legend.forEach(function(item) {
+				ctx.beginPath(); ctx.arc(lx + 4, ly, 3.5, 0, Math.PI * 2);
+				ctx.fillStyle = item.c; ctx.fill();
+				ctx.fillStyle = '#94a3b8';
+				ctx.fillText(item.l, lx + 11, ly + 3);
+				lx += ctx.measureText(item.l).width + 22;
+			});
 		}
 
-		// ─── Mouse interaction ───
+		// ─── Canvas mouse interaction ───
 		canvas.addEventListener('mousemove', function(e) {
 			var rect = canvas.getBoundingClientRect();
-			var mx = e.clientX - rect.left;
-			var my = e.clientY - rect.top;
+			var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+			hoveredNode = null;
+			for (var i = graphNodes.length - 1; i >= 0; i--) {
+				var n = graphNodes[i];
+				var d = Math.sqrt((mx - n.gx) * (mx - n.gx) + (my - n.gy) * (my - n.gy));
+				if (d < n.radius + 4) { hoveredNode = n; break; }
+			}
+			canvas.style.cursor = hoveredNode ? 'pointer' : 'default';
+			drawRings();
+		});
+		canvas.addEventListener('click', function(e) {
+			var rect = canvas.getBoundingClientRect();
+			var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+			var clicked = null;
+			for (var i = graphNodes.length - 1; i >= 0; i--) {
+				var n = graphNodes[i];
+				var d = Math.sqrt((mx - n.gx) * (mx - n.gx) + (my - n.gy) * (my - n.gy));
+				if (d < n.radius + 4) { clicked = n; break; }
+			}
+			selectedNode = (clicked && clicked.id === selectedNode) ? null : (clicked ? clicked.id : null);
+			drawRings();
+		});
+		canvas.addEventListener('mouseleave', function() { hoveredNode = null; drawRings(); });
 
-			if (dragging) {
-				dragging.x = mx - dragOffX;
-				dragging.y = my - dragOffY;
-				draw();
+		// ═══════════════════════════════════════════════
+		//  VIEW 2: TABLE + DETAIL PANEL
+		// ═══════════════════════════════════════════════
+		var tableSelected = null;
+
+		function renderTable() {
+			var sorted = graphNodes.slice().sort(function(a, b) { return b['in'] - a['in']; });
+			var html = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+			html += '<thead><tr style="background:#f9fafb;font-size:10px;text-transform:uppercase;color:#94a3b8">';
+			html += '<th style="padding:6px 8px;text-align:left">Strona</th>';
+			html += '<th style="padding:6px 4px;text-align:center">IN</th>';
+			html += '<th style="padding:6px 4px;text-align:center">OUT</th>';
+			html += '<th style="padding:6px 4px;text-align:center">Status</th></tr></thead><tbody>';
+
+			sorted.forEach(function(n) {
+				var sel = n.id === tableSelected;
+				var dotC = TIER_COLORS[Math.min(3, n.tier || 3)];
+				var statusBadge = '';
+				if (n.orphan) statusBadge = '<span style="background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700">Orphan</span>';
+				else if (n.money) statusBadge = '<span style="background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:10px;font-size:9px">⭐ Money</span>';
+				else if (n.dead_end) statusBadge = '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:10px;font-size:9px">Dead End</span>';
+				else if (n.striking) statusBadge = '<span style="background:#f3e8ff;color:#7c3aed;padding:1px 6px;border-radius:10px;font-size:9px">🎯 Striking</span>';
+				else if (n['in'] >= 3) statusBadge = '<span style="background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:10px;font-size:9px">OK</span>';
+				else statusBadge = '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:10px;font-size:9px">Słaby</span>';
+
+				html += '<tr class="loom-table-row" data-nid="' + n.id + '" style="cursor:pointer;background:' + (sel ? '#f0fdfa' : '#fff') + ';border-bottom:1px solid #f1f5f9">';
+				html += '<td style="padding:6px 8px;font-weight:' + (sel ? 700 : 400) + '"><span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:' + dotC + ';margin-right:6px"></span>' + escHtml(n.label) + '</td>';
+				html += '<td style="text-align:center;font-weight:700;font-family:monospace">' + n['in'] + '</td>';
+				html += '<td style="text-align:center;color:#94a3b8;font-family:monospace">' + n.out + '</td>';
+				html += '<td style="text-align:center">' + statusBadge + '</td></tr>';
+			});
+			html += '</tbody></table>';
+			$('#loom-table-list').html(html);
+			renderTableDetail();
+		}
+
+		function renderTableDetail() {
+			if (!tableSelected || !nodeMap[tableSelected]) {
+				$('#loom-table-detail').html('<div style="color:#94a3b8;text-align:center;padding-top:60px">← Kliknij stronę żeby zobaczyć połączenia</div>');
 				return;
 			}
+			var n = nodeMap[tableSelected];
+			var inE = graphEdges.filter(function(e) { return e.to === tableSelected; });
+			var outE = graphEdges.filter(function(e) { return e.from === tableSelected; });
 
-			hoveredNode = null;
-			for (var i = nodes.length - 1; i >= 0; i--) {
-				var n = nodes[i];
-				var d = Math.sqrt((mx - n.x) * (mx - n.x) + (my - n.y) * (my - n.y));
-				if (d < n.radius + 4) {
-					hoveredNode = n;
-					canvas.style.cursor = 'pointer';
-					break;
-				}
+			var html = '<div style="background:#f0fdfa;border-radius:10px;padding:14px;margin-bottom:12px;border:2px solid #99f6e4">';
+			html += '<div style="font-weight:700;font-size:14px;margin-bottom:4px">' + escHtml(n.label) + '</div>';
+			html += '<div style="color:#6b7280;font-size:12px">Tier: ' + TIER_LABELS[Math.min(3, n.tier || 3)] + ' · PR: ' + (n.pr ? (n.pr * 100).toFixed(1) : '—') + ' · IN: <strong>' + n['in'] + '</strong> · OUT: <strong>' + n.out + '</strong></div></div>';
+
+			// Incoming
+			html += '<div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:6px">↙️ Linki przychodzące (' + inE.length + ')</div>';
+			if (!inE.length) html += '<div style="color:#ef4444;font-size:11px;margin-bottom:12px">🔴 Brak — orphan!</div>';
+			inE.forEach(function(e) {
+				var src = nodeMap[e.from];
+				var lbl = src ? escHtml(src.label) : '?';
+				var loomBadge = e.loom ? '<span style="background:#ccfbf1;color:#115e59;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:600">LOOM</span>' : '';
+				html += '<div class="loom-table-row" data-nid="' + e.from + '" style="padding:4px 8px;background:' + (e.loom ? '#f0fdfa' : '#f9fafb') + ';border-radius:6px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;cursor:pointer">';
+				html += '<span style="color:#0d9488;font-weight:500;font-size:12px">' + lbl + '</span>' + loomBadge + '</div>';
+			});
+
+			// Outgoing
+			html += '<div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin:12px 0 6px">↗️ Linki wychodzące (' + outE.length + ')</div>';
+			if (!outE.length) html += '<div style="color:#f59e0b;font-size:11px">⚠️ Dead end — brak linków wychodzących</div>';
+			outE.forEach(function(e) {
+				var tgt = nodeMap[e.to];
+				var lbl = tgt ? escHtml(tgt.label) : '?';
+				var loomBadge = e.loom ? '<span style="background:#ccfbf1;color:#115e59;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:600">LOOM</span>' : '';
+				html += '<div class="loom-table-row" data-nid="' + e.to + '" style="padding:4px 8px;background:' + (e.loom ? '#f0fdfa' : '#f9fafb') + ';border-radius:6px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;cursor:pointer">';
+				html += '<span style="color:#0d9488;font-weight:500;font-size:12px">' + lbl + '</span>' + loomBadge + '</div>';
+			});
+
+			$('#loom-table-detail').html(html);
+		}
+
+		$(document).on('click', '.loom-table-row', function() {
+			var nid = parseInt($(this).data('nid'));
+			tableSelected = (nid === tableSelected) ? null : nid;
+			renderTable();
+		});
+
+		// ═══════════════════════════════════════════════
+		//  VIEW 3: ADJACENCY MATRIX
+		// ═══════════════════════════════════════════════
+		function renderMatrix() {
+			var sorted = graphNodes.slice().sort(function(a, b) { return a.tier - b.tier || b['in'] - a['in']; });
+			var N = sorted.length;
+			if (N > 40) sorted = sorted.slice(0, 40); // Limit for readability.
+			N = sorted.length;
+
+			var edgeSet = {};
+			graphEdges.forEach(function(e) { edgeSet[e.from + '-' + e.to] = e.loom ? 'loom' : 'manual'; });
+
+			var size = Math.max(14, Math.min(22, Math.floor(600 / N)));
+			var margin = 130;
+			var total = margin + N * size + 30;
+
+			var svg = '<svg width="' + total + '" height="' + total + '" xmlns="http://www.w3.org/2000/svg">';
+
+			// Column headers (rotated).
+			sorted.forEach(function(n, i) {
+				var x = margin + i * size + size / 2;
+				var tc = TIER_COLORS[Math.min(3, n.tier || 3)];
+				var lbl = n.label.length > 16 ? n.label.substring(0, 14) + '…' : n.label;
+				svg += '<text x="' + x + '" y="' + (margin - 4) + '" font-size="7" fill="' + tc + '" text-anchor="end" transform="rotate(-55,' + x + ',' + (margin - 4) + ')">' + escHtml(lbl) + '</text>';
+			});
+
+			// Rows.
+			sorted.forEach(function(row, ri) {
+				var tc = TIER_COLORS[Math.min(3, row.tier || 3)];
+				var lbl = row.label.length > 18 ? row.label.substring(0, 16) + '…' : row.label;
+				svg += '<text x="' + (margin - 6) + '" y="' + (margin + ri * size + size / 2 + 3) + '" font-size="7" fill="' + tc + '" text-anchor="end">' + escHtml(lbl) + '</text>';
+
+				sorted.forEach(function(col, ci) {
+					var key = row.id + '-' + col.id;
+					var type = edgeSet[key];
+					var fill = type === 'loom' ? '#0d9488' : (type === 'manual' ? '#bae6fd' : '#fafafa');
+					var opacity = type ? 1 : 0.3;
+					svg += '<rect x="' + (margin + ci * size) + '" y="' + (margin + ri * size) + '" width="' + (size - 1) + '" height="' + (size - 1) + '" rx="2" fill="' + fill + '" stroke="#f1f5f9" stroke-width="0.5" opacity="' + opacity + '"/>';
+				});
+			});
+
+			// Legend.
+			var ly = margin + N * size + 14;
+			svg += '<rect x="' + margin + '" y="' + ly + '" width="12" height="12" fill="#0d9488" rx="2"/>';
+			svg += '<text x="' + (margin + 16) + '" y="' + (ly + 10) + '" font-size="9" fill="#374151">LOOM link</text>';
+			svg += '<rect x="' + (margin + 80) + '" y="' + ly + '" width="12" height="12" fill="#bae6fd" rx="2"/>';
+			svg += '<text x="' + (margin + 96) + '" y="' + (ly + 10) + '" font-size="9" fill="#374151">Ręczny link</text>';
+
+			if (graphNodes.length > 40) {
+				svg += '<text x="' + (margin + 200) + '" y="' + (ly + 10) + '" font-size="9" fill="#94a3b8">Wyświetlam top 40 z ' + graphNodes.length + '</text>';
 			}
-			if (!hoveredNode) canvas.style.cursor = 'grab';
-			draw();
-		});
+			svg += '</svg>';
 
-		canvas.addEventListener('mousedown', function(e) {
-			if (hoveredNode) {
-				var rect = canvas.getBoundingClientRect();
-				dragging = hoveredNode;
-				dragOffX = (e.clientX - rect.left) - hoveredNode.x;
-				dragOffY = (e.clientY - rect.top) - hoveredNode.y;
-				canvas.style.cursor = 'grabbing';
-			}
-		});
+			$('#loom-matrix-container').html(svg);
+		}
 
-		canvas.addEventListener('mouseup', function() {
-			dragging = null;
-			canvas.style.cursor = hoveredNode ? 'pointer' : 'grab';
-		});
-
-		canvas.addEventListener('mouseleave', function() {
-			dragging = null;
-			hoveredNode = null;
-			draw();
-		});
-	}
+	} // end if(canvas)
 
 	/* ── Money Page Toggle ────────────────────── */
 	$(document).on('click', '.loom-money-toggle', function() {

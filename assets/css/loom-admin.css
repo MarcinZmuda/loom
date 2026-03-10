@@ -135,6 +135,10 @@
 .loom-map-legend { display:flex; gap:10px; align-items:center; font-size:10px; color:var(--muted); flex-wrap:wrap; }
 .loom-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:2px; vertical-align:middle; }
 .loom-map-hint { padding:8px 18px 12px; font-size:10px; color:var(--muted); margin:0; }
+.loom-graph-views { display:flex; gap:4px; }
+.loom-graph-view-btn { background:#fff; border:1.5px solid #e5e7eb; border-radius:6px; padding:4px 12px; font-size:11px; color:#6b7280; cursor:pointer; font-family:inherit; transition:all .15s; }
+.loom-graph-view-btn:hover { border-color:var(--l); color:var(--l); }
+.loom-graph-view-btn.active { background:#f0fdfa; border-color:var(--l); color:var(--l); font-weight:600; }
 
 /* ── Weight sliders ── */
 .loom-weight-row { display:grid; grid-template-columns:28px 140px 1fr 40px; gap:6px; align-items:center; padding:6px 0; }
