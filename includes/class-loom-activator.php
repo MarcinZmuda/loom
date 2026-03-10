@@ -44,6 +44,15 @@ class Loom_Activator {
 
 			update_option( 'loom_settings', $merged );
 			update_option( 'loom_db_version', LOOM_DB_VERSION );
+
+			// Migration: add target_url column if missing (v2.3+).
+			global $wpdb;
+			$lnk = $wpdb->prefix . 'loom_links';
+			$col = $wpdb->get_results( "SHOW COLUMNS FROM {$lnk} LIKE 'target_url'" );
+			if ( empty( $col ) ) {
+				$wpdb->query( "ALTER TABLE {$lnk} ADD COLUMN target_url varchar(500) NOT NULL DEFAULT '' AFTER target_post_id" );
+				$wpdb->query( "ALTER TABLE {$lnk} ADD KEY is_broken (is_broken)" );
+			}
 		}
 	}
 
@@ -100,6 +109,7 @@ class Loom_Activator {
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			source_post_id bigint(20) unsigned NOT NULL,
 			target_post_id bigint(20) unsigned NOT NULL,
+				target_url varchar(500) NOT NULL DEFAULT '',
 			anchor_text varchar(500) NOT NULL DEFAULT '',
 			link_position enum('top','middle','bottom') DEFAULT 'middle',
 			position_percent tinyint(3) unsigned DEFAULT 50,
@@ -111,7 +121,8 @@ class Loom_Activator {
 			PRIMARY KEY  (id),
 			KEY source_post_id (source_post_id),
 			KEY target_post_id (target_post_id),
-			KEY is_plugin_generated (is_plugin_generated)
+			KEY is_plugin_generated (is_plugin_generated),
+				KEY is_broken (is_broken)
 		) {$charset};";
 
 		$sql_log = "CREATE TABLE {$wpdb->prefix}loom_log (

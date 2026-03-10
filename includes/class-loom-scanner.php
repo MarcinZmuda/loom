@@ -174,6 +174,7 @@ class Loom_Scanner {
 			Loom_DB::insert_link( array(
 				'source_post_id'    => $post_id,
 				'target_post_id'    => $target_id > 0 ? $target_id : 0,
+				'target_url'        => mb_substr( $href, 0, 500 ),
 				'anchor_text'       => mb_substr( $anchor_text, 0, 500 ),
 				'link_position'     => $position,
 				'position_percent'  => min( 100, max( 0, $percent ) ),

@@ -442,4 +442,144 @@ class Loom_Linker {
 			'message' => sprintf( __( 'Usunięto %d linków LOOM z %d postów.', 'loom' ), $removed_total, $posts_fixed ),
 		) );
 	}
+
+	/**
+	 * AJAX: Get all broken links with source info.
+	 */
+	public static function ajax_get_broken_links() {
+		check_ajax_referer( 'loom_nonce', 'nonce' );
+		if ( ! current_user_can( 'edit_posts' ) ) wp_send_json_error( 'Forbidden', 403 );
+
+		global $wpdb;
+		$lnk = Loom_DB::links_table();
+		$idx = Loom_DB::index_table();
+
+		$broken = $wpdb->get_results(
+			"SELECT l.id, l.source_post_id, l.target_url, l.anchor_text, l.is_plugin_generated,
+			        i.post_title AS source_title
+			 FROM {$lnk} l
+			 LEFT JOIN {$idx} i ON l.source_post_id = i.post_id
+			 WHERE l.is_broken = 1
+			 ORDER BY l.source_post_id ASC",
+			ARRAY_A
+		);
+
+		$result = array();
+		foreach ( $broken as $b ) {
+			$result[] = array(
+				'id'          => intval( $b['id'] ),
+				'source_id'   => intval( $b['source_post_id'] ),
+				'source_title' => $b['source_title'] ?? __( '(usunięty)', 'loom' ),
+				'target_url'  => $b['target_url'] ?? '',
+				'anchor'      => $b['anchor_text'],
+				'loom'        => intval( $b['is_plugin_generated'] ),
+				'edit_url'    => get_edit_post_link( $b['source_post_id'], 'raw' ),
+			);
+		}
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: Fix a broken link — remove <a> tag or replace URL.
+	 *
+	 * Actions: 'remove' (strip link, keep text) or 'replace' (change href).
+	 */
+	public static function ajax_fix_broken_link() {
+		check_ajax_referer( 'loom_nonce', 'nonce' );
+		if ( ! current_user_can( 'edit_posts' ) ) wp_send_json_error( 'Forbidden', 403 );
+
+		$link_id  = absint( $_POST['link_id'] ?? 0 );
+		$fix_type = sanitize_text_field( $_POST['fix_type'] ?? 'remove' ); // 'remove' or 'replace'.
+		$new_url  = esc_url_raw( $_POST['new_url'] ?? '' );
+
+		if ( ! $link_id ) wp_send_json_error( __( 'Nieprawidłowy ID linku.', 'loom' ) );
+
+		global $wpdb;
+		$lnk = Loom_DB::links_table();
+
+		$link = $wpdb->get_row( $wpdb->prepare(
+			"SELECT * FROM {$lnk} WHERE id = %d", $link_id
+		), ARRAY_A );
+
+		if ( ! $link ) wp_send_json_error( __( 'Link nie znaleziony.', 'loom' ) );
+
+		$post_id = intval( $link['source_post_id'] );
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			wp_send_json_error( __( 'Brak uprawnień do edycji tego posta.', 'loom' ) );
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $post ) wp_send_json_error( __( 'Post nie istnieje.', 'loom' ) );
+
+		$content = $post->post_content;
+		$anchor  = $link['anchor_text'];
+
+		// Backup.
+		update_post_meta( $post_id, '_loom_content_backup', $content );
+
+		if ( $fix_type === 'remove' ) {
+			// Strip <a> tag, keep anchor text.
+			$escaped = preg_quote( $anchor, '/' );
+			$pattern = '/<a\s[^>]*>(?:<[^>]*>)*' . $escaped . '(?:<\/[^>]*>)*<\/a>/i';
+			$new_content = preg_replace( $pattern, $anchor, $content, 1, $count );
+
+			if ( $count > 0 ) {
+				remove_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20 );
+				wp_update_post( array( 'ID' => $post_id, 'post_content' => $new_content ) );
+				add_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20, 3 );
+
+				$wpdb->delete( $lnk, array( 'id' => $link_id ) );
+				Loom_DB::recalc_counters_for_post( $post_id );
+
+				wp_send_json_success( array(
+					'action'  => 'removed',
+					'message' => sprintf( __( 'Link „%s" usunięty z posta.', 'loom' ), $anchor ),
+				) );
+			} else {
+				wp_send_json_error( __( 'Nie znaleziono linku w treści posta. Możliwe, że został już naprawiony.', 'loom' ) );
+			}
+
+		} elseif ( $fix_type === 'replace' && ! empty( $new_url ) ) {
+			// Replace href in existing <a> tag.
+			$old_url = $link['target_url'];
+			if ( ! empty( $old_url ) ) {
+				$escaped_url = preg_quote( $old_url, '/' );
+				$new_content = preg_replace(
+					'/(<a\s[^>]*href=["\'])' . $escaped_url . '(["\'][^>]*>)/i',
+					'${1}' . esc_url( $new_url ) . '${2}',
+					$content, 1, $count
+				);
+			} else {
+				$count = 0;
+			}
+
+			if ( $count > 0 ) {
+				remove_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20 );
+				wp_update_post( array( 'ID' => $post_id, 'post_content' => $new_content ) );
+				add_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20, 3 );
+
+				// Update link record.
+				$new_target_id = url_to_postid( $new_url );
+				$wpdb->update( $lnk, array(
+					'target_url'     => $new_url,
+					'target_post_id' => $new_target_id > 0 ? $new_target_id : 0,
+					'is_broken'      => $new_target_id > 0 ? 0 : 1,
+				), array( 'id' => $link_id ) );
+
+				Loom_DB::recalc_counters_for_post( $post_id );
+				if ( $new_target_id > 0 ) Loom_DB::recalc_counters_for_post( $new_target_id );
+
+				wp_send_json_success( array(
+					'action'  => 'replaced',
+					'message' => sprintf( __( 'URL zmieniony na: %s', 'loom' ), $new_url ),
+				) );
+			} else {
+				wp_send_json_error( __( 'Nie znaleziono URL-a w treści posta.', 'loom' ) );
+			}
+
+		} else {
+			wp_send_json_error( __( 'Nieprawidłowa akcja.', 'loom' ) );
+		}
+	}
 }

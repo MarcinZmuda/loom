@@ -1,0 +1,730 @@
+# LOOM Plugin — English Translation
+# Copyright (C) 2025 Marcin Żmuda
+# This file is distributed under the GPLv2.
+msgid ""
+msgstr ""
+"Project-Id-Version: LOOM 2.3.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-03-10 00:00+0000\n"
+"PO-Revision-Date: 2025-03-10 00:00+0000\n"
+"Last-Translator: Marcin Żmuda\n"
+"Language-Team: English\n"
+"Language: en_US\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(zewn.)"
+msgstr "(ext.)"
+
+msgid "Akcja"
+msgstr "Action"
+
+msgid "Akcje grupowe:"
+msgstr "Bulk actions:"
+
+msgid "Aktualna liczba linków przychodzących / cel do osiągnięcia. Pasek pokazuje postęp."
+msgstr "Current incoming links / goal. Progress bar shows completion."
+
+msgid "Aktualnie LOOM wstawił: %d linków"
+msgstr "LOOM has inserted: %d links"
+
+msgid "Analiza grafu (PageRank)"
+msgstr "Graph analysis (PageRank)"
+
+msgid "Analizowanie..."
+msgstr "Analyzing..."
+
+msgid "Auto"
+msgstr "Auto"
+
+msgid "Auto-linkowanie zakończone!"
+msgstr "Auto-linking complete!"
+
+msgid "Auto-podlinkuj wszystkie orphany"
+msgstr "Auto-link all orphans"
+
+msgid "Auto-podlinkuj zaznaczone"
+msgstr "Auto-link selected"
+
+msgid "Auto: high+medium"
+msgstr "Auto: high+medium"
+
+msgid "Automatyczna ekstrakcja słów kluczowych z tytułu, nagłówków i TF-IDF. Opcjonalnie GPT."
+msgstr "Automatic keyword extraction from title, headings and TF-IDF. Optionally GPT."
+
+msgid "Bez embeddingu"
+msgstr "No embedding"
+
+msgid "Boost %d striking distance"
+msgstr "Boost %d striking distance"
+
+msgid "Bottleneck  -  betweenness %.0f."
+msgstr "Bottleneck — betweenness %.0f."
+
+msgid "Bottom 50%%: %d%% equity"
+msgstr "Bottom 50%%: %d%% equity"
+
+msgid "Brak danych."
+msgstr "No data."
+
+msgid "Brak embeddingu"
+msgstr "No embedding"
+
+msgid "Brak embeddingu w odpowiedzi."
+msgstr "No embedding in API response."
+
+msgid "Brak klucza API OpenAI."
+msgstr "Missing OpenAI API key."
+
+msgid "Brak klucza API."
+msgstr "Missing API key."
+
+msgid "Brak linków LOOM do usunięcia."
+msgstr "No LOOM links to remove."
+
+msgid "Brak linków wewnętrznych. Kliknij „Podlinkuj\"."
+msgstr "No internal links. Click \"Suggest Links\"."
+
+msgid "Brak odpowiedzi z GPT."
+msgstr "No response from GPT."
+
+msgid "Brak postów z embeddingami do porównania."
+msgstr "No posts with embeddings to compare."
+
+msgid "Brak postów z embeddingami do porównania. Wygeneruj embeddingi w ustawieniach."
+msgstr "No posts with embeddings to compare. Generate embeddings in settings."
+
+msgid "Brak stron w striking distance. Kliknij Sync GSC."
+msgstr "No pages in striking distance. Click Sync GSC."
+
+msgid "Brak sugestii o wystarczającym priorytecie."
+msgstr "No suggestions with sufficient priority."
+
+msgid "Brak treści posta."
+msgstr "Post content is empty."
+
+msgid "Brak uprawnień do edycji tego posta."
+msgstr "You don't have permission to edit this post."
+
+msgid "Brak uprawnień."
+msgstr "Insufficient permissions."
+
+msgid "Bulk Mode"
+msgstr "Bulk Mode"
+
+msgid "Błąd"
+msgstr "Error"
+
+msgid "Click depth przeliczony."
+msgstr "Click depth recalculated."
+
+msgid "Click depth — ile kliknięć od strony głównej. Google zaleca ≤3. Większa głębokość = gorzej zaindeksowana."
+msgstr "Click depth — number of clicks from homepage. Google recommends ≤3. Deeper = harder to index."
+
+msgid "Click-Through Rate: % osób, które kliknęły po zobaczeniu wyniku. Typowo 1-5% dla pozycji 5-20."
+msgstr "Click-Through Rate: % of people who clicked after seeing the result. Typically 1-5% for positions 5-20."
+
+msgid "Czy na pewno chcesz zastosować wybrane linki?"
+msgstr "Are you sure you want to apply the selected links?"
+
+msgid "Dashboard"
+msgstr "Dashboard"
+
+msgid "Dead end  -  %d IN, 0 OUT. Pochłania equity."
+msgstr "Dead end — %d IN, 0 OUT. Absorbs equity."
+
+msgid "Dead ends to strony bez linków wychodzących. Użytkownik nie ma gdzie dalej iść. Dodaj linki do powiązanych treści."
+msgstr "Dead ends are pages with no outgoing links. Users hit a dead end. Add links to related content."
+
+msgid "Dodaj klucz API OpenAI w"
+msgstr "Add your OpenAI API key in"
+
+msgid "Dodaj klucz API OpenAI w ustawieniach."
+msgstr "Add your OpenAI API key in settings."
+
+msgid "Dodaj klucz API w"
+msgstr "Add your API key in"
+
+msgid "Dodaj klucz API w ustawieniach."
+msgstr "Add your API key in settings."
+
+msgid "Dokładnie jak w GSC (z https://, ze slashem lub bez)."
+msgstr "Exactly as in GSC (with https://, with or without trailing slash)."
+
+msgid "Dwa kroki  -  zero OAuth, zero kodów autoryzacji:"
+msgstr "Two steps — zero OAuth, zero authorization codes:"
+
+msgid "Embedding"
+msgstr "Embedding"
+
+msgid "Equity"
+msgstr "Equity"
+
+msgid "Equity (link juice) to wartość SEO przekazywana przez linki. Powinna być rozłożona równomiernie — nie skoncentrowana na kilku stronach."
+msgstr "Equity (link juice) is SEO value passed through links. Should be distributed evenly — not concentrated on a few pages."
+
+msgid "GSC nie połączony."
+msgstr "GSC not connected."
+
+msgid "GSC nie połączony. Wklej JSON Service Account w ustawieniach."
+msgstr "GSC not connected. Paste Service Account JSON in settings."
+
+msgid "GSC połączony!"
+msgstr "GSC connected!"
+
+msgid "GSC rozłączony."
+msgstr "GSC disconnected."
+
+msgid "Generowanie embeddingów..."
+msgstr "Generating embeddings..."
+
+msgid "Google Search Console"
+msgstr "Google Search Console"
+
+msgid "Google Search Console 📊"
+msgstr "Google Search Console 📊"
+
+msgid "Google nie zwrócił access token."
+msgstr "Google did not return an access token."
+
+msgid "Gotowe!"
+msgstr "Done!"
+
+msgid "Graf przeliczony."
+msgstr "Graph recalculated."
+
+msgid "Gęstość grafu: stosunek istniejących linków do wszystkich możliwych. Typowy zdrowy zakres: 2-8%. Zbyt niski = słabe linkowanie, zbyt wysoki = spam."
+msgstr "Graph density: ratio of existing links to all possible links. Healthy range: 2-8%. Too low = weak linking, too high = spam."
+
+msgid "Główne słowa kluczowe wyodrębnione z treści (SEO plugin + tytuł + TF-IDF + opcjonalnie GPT + GSC queries)."
+msgstr "Main keywords extracted from content (SEO plugin + title + TF-IDF + optionally GPT + GSC queries)."
+
+msgid "Głębokie (>3): %d | Nieosiągalne: %d"
+msgstr "Deep (>3): %d | Unreachable: %d"
+
+msgid "IN"
+msgstr "IN"
+
+msgid "Ile razy strona pojawiła się w wynikach Google w ciągu 28 dni. Więcej = większy potencjał ruchu."
+msgstr "How many times the page appeared in Google results over 28 days. More = higher traffic potential."
+
+msgid "Impressions z Google — ile razy strona wyświetliła się w wynikach wyszukiwania."
+msgstr "Google impressions — how many times the page was shown in search results."
+
+msgid "Internal PageRank — siła strony obliczona algorytmem PageRank na grafie Twojej witryny. Wyższa = ważniejsza strona."
+msgstr "Internal PageRank — page authority computed by PageRank algorithm on your site's link graph. Higher = more important."
+
+msgid "JSON zapisany, ale autoryzacja nie powiodła się: "
+msgstr "JSON saved, but authorization failed: "
+
+msgid "Jaki % całego PageRank trafia do 10% najsilniejszych stron. Poniżej 50% = zdrowy rozkład."
+msgstr "What % of total PageRank goes to the top 10% of pages. Below 50% = healthy distribution."
+
+msgid "Jednym kliknięciem  -  wstawia linki high+medium bez pytania"
+msgstr "One click — inserts high+medium links without asking"
+
+msgid "Kliknij = pokaż połączenia · Przeciągnij = przesuń · Podwójne kliknięcie = reset pozycji"
+msgstr "Click = show connections · Drag = move · Double-click = reset positions"
+
+msgid "Klucz API OpenAI"
+msgstr "OpenAI API Key"
+
+msgid "Klucz API nieprawidłowy lub wygasł."
+msgstr "API key is invalid or expired."
+
+msgid "Klucz zapisany."
+msgstr "Key saved."
+
+msgid "Koncentryczne ringi wg hierarchii. Kliknij node = pokaż połączenia. Przeciągnij = przesuń."
+msgstr "Concentric rings by hierarchy. Click node = show connections. Drag = move."
+
+msgid "Kontroluj priorytety algorytmu composite score. Suma powinna wynosić 1.00."
+msgstr "Control composite score algorithm priorities. Sum should equal 1.00."
+
+msgid "Koszt API"
+msgstr "API Cost"
+
+msgid "Krytyczny = brakuje 5+ linków do celu. Potrzebuje = brakuje 1-4 linków. OK = cel osiągnięty."
+msgstr "Critical = missing 5+ links to goal. Needs more = missing 1-4. OK = goal reached."
+
+msgid "Liczba linków wewnętrznych wstawionych przez LOOM (zatwierdzonych przez Ciebie lub auto-linkowanie)."
+msgstr "Number of internal links inserted by LOOM (approved by you or auto-linking)."
+
+msgid "Liczba odizolowanych grup stron. Idealnie: 1 (cała strona jest połączona). >1 = istnieją grupy stron bez połączeń między sobą."
+msgstr "Number of isolated page groups. Ideal: 1 (entire site connected). >1 = some page groups have no links between them."
+
+msgid "Liczba wyświetleń w wynikach Google w ciągu ostatnich 28 dni."
+msgstr "Number of appearances in Google results over the last 28 days."
+
+msgid "Limit API wyczerpany. Spróbuj za chwilę."
+msgstr "API rate limit reached. Try again in a moment."
+
+msgid "Link velocity"
+msgstr "Link velocity"
+
+msgid "Linki IN (%d)"
+msgstr "Links IN (%d)"
+
+msgid "Linki LOOM"
+msgstr "LOOM Links"
+
+msgid "Linki OUT (%d)"
+msgstr "Links OUT (%d)"
+
+msgid "Linki prowadzące do nieistniejących stron (post usunięty lub zmieniony URL). Napraw lub usuń te linki."
+msgstr "Links pointing to non-existent pages (deleted post or changed URL). Fix or remove these links."
+
+msgid "Linki przychodzące — ile stron linkuje DO tej strony. Im więcej, tym silniejsza strona."
+msgstr "Incoming links — how many pages link TO this page. More = stronger page."
+
+msgid "Linki wychodzące — ile linków wewnętrznych jest W treści tej strony. 0 = dead end."
+msgstr "Outgoing links — how many internal links are IN this page's content. 0 = dead end."
+
+msgid "Linkowanie"
+msgstr "Linking"
+
+msgid "Lista"
+msgstr "List"
+
+msgid "Lista stron z panelem połączeń. Kliknij stronę = zobacz linki IN i OUT."
+msgstr "Page list with connections panel. Click a page = see IN and OUT links."
+
+msgid "Macierz"
+msgstr "Matrix"
+
+msgid "Macierz NxN. Wiersz = źródło, kolumna = cel. Teal = link LOOM, niebieski = ręczny."
+msgstr "NxN matrix. Row = source, column = target. Teal = LOOM link, blue = manual."
+
+msgid "Mapa powiązań"
+msgstr "Link Map"
+
+msgid "Masz %d stron bez linków przychodzących (orphan pages)."
+msgstr "You have %d pages without incoming links (orphan pages)."
+
+msgid "Max sugestii per post"
+msgstr "Max suggestions per post"
+
+msgid "Min. similarity (próg trafności)"
+msgstr "Min. similarity (relevance threshold)"
+
+msgid "Money Pages  -  status linkowania"
+msgstr "Money Pages — linking status"
+
+msgid "Money pages z deficytem linków — nie osiągnęły celu linkowania. Więcej linków = więcej equity = wyższa pozycja."
+msgstr "Money pages with link deficit — haven't reached their linking goal. More links = more equity = higher position."
+
+msgid "Najczęstsze zapytanie z Google, na które ta strona się wyświetla. Użyj go jako anchor text w linkach."
+msgstr "Most common Google query this page appears for. Use it as anchor text in links."
+
+msgid "Najgłębsza strona mierzona liczbą kliknięć od homepage. Google zaleca ≤3 kliknięcia. >4 = strona trudno dostępna."
+msgstr "Deepest page measured by clicks from homepage. Google recommends ≤3 clicks. >4 = hard to reach."
+
+msgid "Napraw %d dead endów"
+msgstr "Fix %d dead ends"
+
+msgid "Napraw %d orphanów"
+msgstr "Fix %d orphans"
+
+msgid "Napraw w Bulk Mode ->"
+msgstr "Fix in Bulk Mode ->"
+
+msgid "Nie udało się odczytać treści posta."
+msgstr "Failed to read post content."
+
+msgid "Nie udało się podpisać JWT. Sprawdź private_key w JSON."
+msgstr "Failed to sign JWT. Check private_key in JSON."
+
+msgid "Nie udało się połączyć z OpenAI."
+msgstr "Failed to connect to OpenAI."
+
+msgid "Niepołączony"
+msgstr "Not connected"
+
+msgid "Nieprawidłowa odpowiedź z OpenAI."
+msgstr "Invalid response from OpenAI."
+
+msgid "Nieprawidłowy ID posta."
+msgstr "Invalid post ID."
+
+msgid "Nieprawidłowy JSON z GPT."
+msgstr "Invalid JSON from GPT."
+
+msgid "Nieprawidłowy JSON. Potrzebne pola: client_email, private_key."
+msgstr "Invalid JSON. Required fields: client_email, private_key."
+
+msgid "Nieprawidłowy post lub brak uprawnień."
+msgstr "Invalid post or insufficient permissions."
+
+msgid "Nieskanowany"
+msgstr "Not scanned"
+
+msgid "Niski PR (%.6f) dla %s."
+msgstr "Low PR (%.6f) for %s."
+
+msgid "Normalizuj"
+msgstr "Normalize"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "OUT"
+msgstr "OUT"
+
+msgid "Ogólne"
+msgstr "General"
+
+msgid "OpenAI tymczasowo niedostępne."
+msgstr "OpenAI temporarily unavailable."
+
+msgid "Orphan"
+msgstr "Orphan"
+
+msgid "Orphan  -  zero linków IN. Niewidoczny."
+msgstr "Orphan — zero IN links. Invisible to crawlers."
+
+msgid "Orphany"
+msgstr "Orphans"
+
+msgid "Orphany to strony bez linków przychodzących — Google może ich nie zaindeksować. LOOM zasugeruje linki z powiązanych artykułów."
+msgstr "Orphans are pages without incoming links — Google may not index them. LOOM will suggest links from related articles."
+
+msgid "Oznacz strony jako money pages klikając ⭐ w tabeli postów."
+msgstr "Mark pages as money pages by clicking ⭐ in the posts table."
+
+msgid "Pierścienie"
+msgstr "Rings"
+
+msgid "Placement quality 📍"
+msgstr "Placement quality 📍"
+
+msgid "Podlinkuj"
+msgstr "Suggest Links"
+
+msgid "Podobieństwo semantyczne"
+msgstr "Semantic similarity"
+
+msgid "Podsumowanie stanu linkowania wewnętrznego: metryki, equity, szybkie akcje."
+msgstr "Internal linking overview: metrics, equity, quick actions."
+
+msgid "Ponowne skanowanie odświeża indeks treści i linków. Uruchom po dodaniu nowych postów lub zmianach w strukturze."
+msgstr "Re-scanning refreshes the content and link index. Run after adding new posts or structural changes."
+
+msgid "Posty z similarity poniżej tego progu nie będą proponowane jako targety. Domyślnie 0.35."
+msgstr "Posts with similarity below this threshold won't be suggested as targets. Default 0.35."
+
+msgid "Potencjalny zwrot z linkowania: Wysoki = dużo impressions, link może dać duży wzrost ruchu."
+msgstr "Potential linking ROI: High = many impressions, a link could significantly increase traffic."
+
+msgid "Powiadomienia o orphanach"
+msgstr "Orphan notifications"
+
+msgid "Połącz GSC"
+msgstr "Connect GSC"
+
+msgid "Połącz Google Search Console w ustawieniach aby zobaczyć dane."
+msgstr "Connect Google Search Console in settings to see data."
+
+msgid "Połączony"
+msgstr "Connected"
+
+msgid "Priorytet 1-5 — im wyższy, tym więcej equity LOOM kieruje do tej strony."
+msgstr "Priority 1-5 — the higher, the more equity LOOM directs to this page."
+
+msgid "Priorytet głębokich stron"
+msgstr "Deep page priority"
+
+msgid "Priorytet klastra"
+msgstr "Cluster priority"
+
+msgid "Priorytet money pages ⭐"
+msgstr "Money page priority ⭐"
+
+msgid "Priorytet orphan pages"
+msgstr "Orphan page priority"
+
+msgid "Priorytet wyższych tierów"
+msgstr "Higher tier priority"
+
+msgid "Przegląd"
+msgstr "Overview"
+
+msgid "Przelicz graf aby zobaczyć equity."
+msgstr "Recalculate graph to see equity."
+
+msgid "Przeskanuj ponownie"
+msgstr "Re-scan"
+
+msgid "Przeskanuj stronę, aby zbudować indeks treści i linków."
+msgstr "Scan your site to build the content and link index."
+
+msgid "Przetwarzanie..."
+msgstr "Processing..."
+
+msgid "Re-skanuj przy zapisie posta"
+msgstr "Re-scan on post save"
+
+msgid "Rozłącz"
+msgstr "Disconnect"
+
+msgid "Rzeczywista liczba kliknięć z Google w ciągu 28 dni."
+msgstr "Actual clicks from Google over 28 days."
+
+msgid "Skanowanie..."
+msgstr "Scanning..."
+
+msgid "Skanuj stronę"
+msgstr "Scan Site"
+
+msgid "Sprawdź czy email SA jest dodany jako użytkownik w GSC."
+msgstr "Check that the SA email is added as a user in GSC."
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Status strony: Orphan (0 linków IN), Słaby (1-2 IN), Dead End (0 linków OUT), Striking (pozycja 5-20), Hub (10+ IN)."
+msgstr "Page status: Orphan (0 links IN), Weak (1-2 IN), Dead End (0 links OUT), Striking (position 5-20), Hub (10+ IN)."
+
+msgid "Strefa zagrożenia"
+msgstr "Danger Zone"
+
+msgid "Striking Distance  -  strony o krok od page 1"
+msgstr "Striking Distance — pages one step from page 1"
+
+msgid "Stron"
+msgstr "Pages"
+
+msgid "Strona"
+msgstr "Page"
+
+msgid "Strony bez linków wychodzących — ślepy zaułek dla użytkownika."
+msgstr "Pages with no outgoing links — a dead end for users."
+
+msgid "Strony bez żadnego linka przychodzącego. Google może ich nie zaindeksować."
+msgstr "Pages with no incoming links. Google may not index them."
+
+msgid "Strony bez żadnego linka przychodzącego. Google może ich nie znaleźć. Dodaj linki do tych stron z powiązanych artykułów."
+msgstr "Pages with no incoming links. Google may not find them. Add links from related articles."
+
+msgid "Strony bez żadnego linka wychodzącego. Użytkownik trafia w ślepy zaułek. Dodaj linki do powiązanych treści."
+msgstr "Pages with no outgoing links. Users hit a dead end. Add links to related content."
+
+msgid "Strony konwersji (usługi, produkty). Monitoruj cel linkowania, anchor diversity, pozycję w Google."
+msgstr "Conversion pages (services, products). Monitor link goals, anchor diversity, Google position."
+
+msgid "Strony konwersji (usługi, produkty, kontakt). LOOM kieruje equity (wartość linków) w ich stronę."
+msgstr "Conversion pages (services, products, contact). LOOM directs equity (link value) toward them."
+
+msgid "Strony konwersji oznaczone jako money pages."
+msgstr "Conversion pages marked as money pages."
+
+msgid "Strony na pozycji 5-20 w Google — blisko strony 1 wyników."
+msgstr "Pages at position 5-20 in Google — close to page 1 results."
+
+msgid "Strony na pozycji 5-20 w Google. Jeden dodatkowy link wewnętrzny może przesunąć je na stronę 1 wyników."
+msgstr "Pages at position 5-20 in Google. One additional internal link could push them to page 1."
+
+msgid "Strony na pozycji 5-20 w Google. Jeden link wewnętrzny może przesunąć je na stronę 1 i znacząco zwiększyć ruch."
+msgstr "Pages at position 5-20 in Google. One internal link could push them to page 1 and significantly increase traffic."
+
+msgid "Strony na pozycji 5-20 w Google. Jeden link wewnętrzny może przesunąć je na stronę 1."
+msgstr "Pages at position 5-20 in Google. One internal link could push them to page 1."
+
+msgid "Strony z tylko 1-2 linkami przychodzącymi. Potrzebują wzmocnienia."
+msgstr "Pages with only 1-2 incoming links. Need reinforcement."
+
+msgid "Strony-mosty łączące odizolowane grupy treści. Usunięcie takiej strony rozspójniłoby strukturę serwisu."
+msgstr "Bridge pages connecting isolated content groups. Removing such a page would disconnect your site structure."
+
+msgid "Suma:"
+msgstr "Sum:"
+
+msgid "Sync GSC"
+msgstr "Sync GSC"
+
+msgid "Synchronizuj"
+msgstr "Synchronize"
+
+msgid "Szybkie akcje"
+msgstr "Quick Actions"
+
+msgid "Słaby"
+msgstr "Weak"
+
+msgid "Tabela wszystkich stron z metrykami IN/OUT, statusem, filtrami."
+msgstr "Table of all pages with IN/OUT metrics, status, filters."
+
+msgid "To nie jest klucz Service Account. Sprawdź typ w JSON."
+msgstr "This is not a Service Account key. Check the type in JSON."
+
+msgid "Top 10%%: %d%% equity"
+msgstr "Top 10%%: %d%% equity"
+
+msgid "Topical authority 🏆"
+msgstr "Topical authority 🏆"
+
+msgid "Treść posta została zmieniona. Kliknij „Podlinkuj\" ponownie."
+msgstr "Post content has changed. Click \"Suggest Links\" again."
+
+msgid "Typy postów"
+msgstr "Post types"
+
+msgid "Tytuł"
+msgstr "Title"
+
+msgid "URL strony w GSC"
+msgstr "Site URL in GSC"
+
+msgid "Ustawienia"
+msgstr "Settings"
+
+msgid "Ustawienia ->"
+msgstr "Settings ->"
+
+msgid "Ustawienia ogólne"
+msgstr "General Settings"
+
+msgid "Ustawienia zapisane."
+msgstr "Settings saved."
+
+msgid "Usunięto %d linków LOOM z %d postów."
+msgstr "Removed %d LOOM links from %d posts."
+
+msgid "Usuń wszystkie %d linki LOOM"
+msgstr "Remove all %d LOOM links"
+
+msgid "Usuń wszystkie linki wstawione przez LOOM z post_content. Anchor text zostanie zachowany, tag <a> usunięty. Kopia zapasowa treści zostanie zapisana."
+msgstr "Remove all links inserted by LOOM from post_content. Anchor text will be preserved, <a> tag removed. Content backup will be saved."
+
+msgid "Utwórz Service Account"
+msgstr "Create Service Account"
+
+msgid "Użyj GPT (warstwa 3, ~$0.001/post)"
+msgstr "Use GPT (layer 3, ~$0.001/post)"
+
+msgid "W"
+msgstr "W"
+
+msgid "Wagi composite score (9 wymiarów)"
+msgstr "Composite score weights (11 dimensions)"
+
+msgid "Wagi scoringu (zaawansowane)"
+msgstr "Scoring weights (advanced)"
+
+msgid "Wagi scoringu, klucze API, GSC, zarządzanie danymi."
+msgstr "Scoring weights, API keys, GSC, data management."
+
+msgid "Witaj w LOOM"
+msgstr "Welcome to LOOM"
+
+msgid "Wizualizacja grafu linków wewnętrznych: pierścienie, macierz, lista połączeń."
+msgstr "Internal link graph visualization: rings, matrix, connection list."
+
+msgid "Wklej zawartość pliku JSON."
+msgstr "Paste the JSON file contents."
+
+msgid "Wklej zawartość pliku JSON:"
+msgstr "Paste the JSON file contents:"
+
+msgid "Wstawianie linków..."
+msgstr "Inserting links..."
+
+msgid "Wstawiono %1$d z %2$d sugestii (high + medium)."
+msgstr "Inserted %1$d of %2$d suggestions (high + medium)."
+
+msgid "Wstawiono %d linków."
+msgstr "Inserted %d links."
+
+msgid "Wszystkie"
+msgstr "All"
+
+msgid "Wszystkie (%d)"
+msgstr "All (%d)"
+
+msgid "Wszystkie strony w indeksie LOOM."
+msgstr "All pages in the LOOM index."
+
+msgid "Wygenerowane: %d | Brak: %d"
+msgstr "Generated: %d | Missing: %d"
+
+msgid "Wykryte: %d | Brak: %d"
+msgstr "Detected: %d | Missing: %d"
+
+msgid "Wymagany do analizy AI. Klucz jest szyfrowany w bazie danych."
+msgstr "Required for AI analysis. Key is encrypted in the database."
+
+msgid "Wysoki PR (%.6f), tylko %d OUT."
+msgstr "High PR (%.6f), only %d OUT."
+
+msgid "Wzmocnij money pages"
+msgstr "Boost money pages"
+
+msgid "Zapisz"
+msgstr "Save"
+
+msgid "Zapisz klucz"
+msgstr "Save Key"
+
+msgid "Zapisz ustawienia"
+msgstr "Save Settings"
+
+msgid "Zbyt szybko. Odczekaj kilka sekund."
+msgstr "Too fast. Wait a few seconds."
+
+msgid "Zmień klucz"
+msgstr "Change Key"
+
+msgid "Zróżnicowanie anchorów: 100% = każdy link ma inny anchor. Poniżej 60% = ryzyko over-optymalizacji."
+msgstr "Anchor diversity: 100% = every link has a different anchor. Below 60% = over-optimization risk."
+
+msgid "Zsynchronizowano %d stron, %d w striking distance."
+msgstr "Synced %d pages, %d in striking distance."
+
+msgid "dodaj email Service Account jako użytkownika (Pełne uprawnienia lub Ograniczone)"
+msgstr "add Service Account email as user (Full or Restricted access)"
+
+msgid "ustawieniach"
+msgstr "settings"
+
+msgid "w Google Cloud i pobierz klucz JSON"
+msgstr "in Google Cloud and download the JSON key"
+
+msgid "Łączna liczba przeskanowanych stron i postów w indeksie LOOM."
+msgstr "Total number of scanned pages and posts in the LOOM index."
+
+msgid "Łączny koszt wywołań OpenAI API (embeddingi + sugestie GPT). Typowy koszt: ~$0.002 za jedno „Podlinkuj\"."
+msgstr "Total cost of OpenAI API calls (embeddings + GPT suggestions). Typical cost: ~$0.002 per \"Suggest Links\"."
+
+msgid "Średnia liczba linków przychodzących na stronę. Im wyższa, tym lepsza dystrybucja equity. Cel: ≥3 dla każdej strony."
+msgstr "Average incoming links per page. Higher = better equity distribution. Goal: ≥3 for every page."
+
+msgid "Średnia liczba linków wychodzących na stronę. Optymalna wartość: 3-8 dla artykułów, więcej dla pillar pages."
+msgstr "Average outgoing links per page. Optimal: 3-8 for articles, more for pillar pages."
+
+msgid "Średnia pozycja w Google z Google Search Console. Dane z ostatnich 28 dni."
+msgstr "Average Google position from Search Console. Last 28 days of data."
+
+msgid "Średnia pozycja w Google z Google Search Console. Im niższa, tym lepiej."
+msgstr "Average Google position from Search Console. Lower is better."
+
+msgid "Średnia pozycja w Google. 5-10 = blisko strony 1. 11-20 = strona 2, do przesunięcia jednym linkiem."
+msgstr "Average Google position. 5-10 = close to page 1. 11-20 = page 2, movable with one link."
+
+msgid "🎯 Focus Keywords (auto)"
+msgstr "🎯 Focus Keywords (auto)"
+
+msgid "🎯 Wykryj keywords (%d)"
+msgstr "🎯 Detect keywords (%d)"
+
+msgid "📐 Przelicz Click Depth"
+msgstr "📐 Recalculate Click Depth"
+
+msgid "📐 Struktura strony"
+msgstr "📐 Site Structure"
+
+msgid "🧠 Embeddingi"
+msgstr "🧠 Embeddings"
+
+msgid "🧠 Generuj embeddingi (%d)"
+msgstr "🧠 Generate embeddings (%d)"

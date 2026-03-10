@@ -92,6 +92,8 @@ add_action( 'wp_ajax_loom_gsc_save_credentials', array( 'Loom_GSC', 'ajax_save_c
 add_action( 'wp_ajax_loom_gsc_sync', array( 'Loom_GSC', 'ajax_sync' ) );
 add_action( 'wp_ajax_loom_gsc_disconnect', array( 'Loom_GSC', 'ajax_disconnect' ) );
 add_action( 'wp_ajax_loom_remove_all_links', array( 'Loom_Linker', 'ajax_remove_all_loom_links' ) );
+add_action( 'wp_ajax_loom_get_broken_links', array( 'Loom_Linker', 'ajax_get_broken_links' ) );
+add_action( 'wp_ajax_loom_fix_broken_link', array( 'Loom_Linker', 'ajax_fix_broken_link' ) );
 add_action( 'wp_ajax_loom_set_money_page', array( 'Loom_DB', 'ajax_set_money_page' ) );
 add_action( 'wp_ajax_loom_get_money_pages', array( 'Loom_DB', 'ajax_get_money_pages' ) );
 

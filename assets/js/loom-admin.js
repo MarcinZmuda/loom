@@ -846,6 +846,18 @@
 				ctx.lineWidth = isSelected ? 3 : (isHover ? 2.5 : 1.5);
 				ctx.fill(); ctx.stroke();
 
+				// Pulse ring on selected node.
+				if (isSelected && pulsePhase) {
+					var pr = n.radius + 8 + Math.sin(pulsePhase) * 5;
+					ctx.beginPath();
+					ctx.arc(n.gx, n.gy, pr, 0, Math.PI * 2);
+					ctx.strokeStyle = style.stroke;
+					ctx.lineWidth = 1.5;
+					ctx.globalAlpha = 0.3 + Math.sin(pulsePhase) * 0.2;
+					ctx.stroke();
+					ctx.globalAlpha = dimmed ? 0.12 : 1;
+				}
+
 				// Label.
 				if ((n.radius > 7 || isSelected || isHover) && !dimmed) {
 					ctx.font = (isSelected || isHover ? 'bold ' : '') + '9px -apple-system, sans-serif';
@@ -855,6 +867,32 @@
 				}
 				ctx.globalAlpha = 1;
 			});
+
+			// Hover tooltip (richer than label).
+			if (hoveredNode && (!selectedNode || hoveredNode.id !== selectedNode)) {
+				var hn = hoveredNode;
+				var tw = 190, th = 68;
+				var tx = Math.min(hn.gx + 18, W - tw - 10);
+				var ty = Math.max(hn.gy - th - 10, 10);
+
+				ctx.fillStyle = 'rgba(255,255,255,.97)';
+				ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+				ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 8); ctx.fill(); ctx.stroke();
+
+				ctx.textAlign = 'left';
+				ctx.font = 'bold 11px -apple-system, sans-serif'; ctx.fillStyle = '#0f172a';
+				ctx.fillText(hn.label, tx + 10, ty + 17);
+				ctx.font = '10px -apple-system, sans-serif'; ctx.fillStyle = '#64748b';
+				ctx.fillText('IN: ' + hn['in'] + ' · OUT: ' + hn.out + ' · PR: ' + (hn.pr ? (hn.pr * 100).toFixed(1) : '—'), tx + 10, ty + 33);
+				var flags = [];
+				if (hn.orphan) flags.push('🔴 Orphan');
+				if (hn.money) flags.push('⭐ Money');
+				if (hn.striking) flags.push('🎯 Striking');
+				if (hn.dead_end) flags.push('🟠 Dead End');
+				ctx.fillText(flags.join(' ') || TIER_LABELS[Math.min(3, hn.tier || 3)], tx + 10, ty + 49);
+				ctx.fillStyle = '#94a3b8'; ctx.font = '9px -apple-system, sans-serif';
+				ctx.fillText('Kliknij = połączenia · Przeciągnij = przesuń', tx + 10, ty + 62);
+			}
 
 			// Info panel for selected node.
 			if (selectedNode && nodeMap[selectedNode]) {
@@ -903,32 +941,107 @@
 			});
 		}
 
-		// ─── Canvas mouse interaction ───
+		// ─── Canvas mouse interaction — drag + click + hover ───
+		var dragging = null, dragOffX = 0, dragOffY = 0, dragMoved = false;
+		var pulsePhase = 0;
+		var animFrame = null;
+
+		// Pulse animation for selected node.
+		function startPulse() {
+			if (animFrame) return;
+			(function tick() {
+				pulsePhase = (pulsePhase + 0.06) % (Math.PI * 2);
+				drawRings();
+				if (selectedNode) animFrame = requestAnimationFrame(tick);
+				else { animFrame = null; pulsePhase = 0; }
+			})();
+		}
+
+		function findNodeAt(mx, my) {
+			for (var i = graphNodes.length - 1; i >= 0; i--) {
+				var n = graphNodes[i];
+				var d = Math.sqrt((mx - n.gx) * (mx - n.gx) + (my - n.gy) * (my - n.gy));
+				if (d < n.radius + 6) return n;
+			}
+			return null;
+		}
+
 		canvas.addEventListener('mousemove', function(e) {
 			var rect = canvas.getBoundingClientRect();
 			var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-			hoveredNode = null;
-			for (var i = graphNodes.length - 1; i >= 0; i--) {
-				var n = graphNodes[i];
-				var d = Math.sqrt((mx - n.gx) * (mx - n.gx) + (my - n.gy) * (my - n.gy));
-				if (d < n.radius + 4) { hoveredNode = n; break; }
+
+			if (dragging) {
+				dragMoved = true;
+				dragging.gx = Math.max(dragging.radius + 5, Math.min(W - dragging.radius - 5, mx - dragOffX));
+				dragging.gy = Math.max(dragging.radius + 5, Math.min(H - dragging.radius - 5, my - dragOffY));
+				drawRings();
+				return;
 			}
+
+			hoveredNode = findNodeAt(mx, my);
 			canvas.style.cursor = hoveredNode ? 'pointer' : 'default';
 			drawRings();
 		});
-		canvas.addEventListener('click', function(e) {
+
+		canvas.addEventListener('mousedown', function(e) {
 			var rect = canvas.getBoundingClientRect();
 			var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-			var clicked = null;
-			for (var i = graphNodes.length - 1; i >= 0; i--) {
-				var n = graphNodes[i];
-				var d = Math.sqrt((mx - n.gx) * (mx - n.gx) + (my - n.gy) * (my - n.gy));
-				if (d < n.radius + 4) { clicked = n; break; }
+			var node = findNodeAt(mx, my);
+			if (node) {
+				dragging = node;
+				dragMoved = false;
+				dragOffX = mx - node.gx;
+				dragOffY = my - node.gy;
+				canvas.style.cursor = 'grabbing';
 			}
-			selectedNode = (clicked && clicked.id === selectedNode) ? null : (clicked ? clicked.id : null);
+		});
+
+		canvas.addEventListener('mouseup', function(e) {
+			var rect = canvas.getBoundingClientRect();
+			var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+			if (dragging) {
+				var clicked = dragging;
+				var wasDrag = dragMoved;
+				dragging = null;
+				canvas.style.cursor = 'pointer';
+
+				if (!wasDrag) {
+					// Click (no drag) — toggle selection.
+					selectedNode = (clicked.id === selectedNode) ? null : clicked.id;
+					if (selectedNode) startPulse();
+				}
+				drawRings();
+				return;
+			}
+
+			// Click on empty area — deselect.
+			var node = findNodeAt(mx, my);
+			if (!node && selectedNode) {
+				selectedNode = null;
+				drawRings();
+			}
+		});
+
+		// Click handled by mouseup — prevent default click from doing anything else.
+		canvas.addEventListener('click', function(e) { e.preventDefault(); });
+
+		canvas.addEventListener('mouseleave', function() {
+			dragging = null; dragMoved = false;
+			hoveredNode = null;
 			drawRings();
 		});
-		canvas.addEventListener('mouseleave', function() { hoveredNode = null; drawRings(); });
+
+		// Click on empty area — deselect.
+		canvas.addEventListener('dblclick', function(e) {
+			var rect = canvas.getBoundingClientRect();
+			var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+			if (!findNodeAt(mx, my)) {
+				selectedNode = null;
+				positionNodes();
+				drawRings();
+			}
+		});
 
 		// ═══════════════════════════════════════════════
 		//  VIEW 2: TABLE + DETAIL PANEL
@@ -1016,54 +1129,104 @@
 		function renderMatrix() {
 			var sorted = graphNodes.slice().sort(function(a, b) { return a.tier - b.tier || b['in'] - a['in']; });
 			var N = sorted.length;
-			if (N > 40) sorted = sorted.slice(0, 40); // Limit for readability.
+			if (N > 30) sorted = sorted.slice(0, 30);
 			N = sorted.length;
 
 			var edgeSet = {};
 			graphEdges.forEach(function(e) { edgeSet[e.from + '-' + e.to] = e.loom ? 'loom' : 'manual'; });
 
-			var size = Math.max(14, Math.min(22, Math.floor(600 / N)));
-			var margin = 130;
-			var total = margin + N * size + 30;
+			var size = Math.max(26, Math.min(36, Math.floor(900 / N)));
+			var margin = 220;
+			var total = margin + N * size + 50;
 
-			var svg = '<svg width="' + total + '" height="' + total + '" xmlns="http://www.w3.org/2000/svg">';
+			var html = '<div style="position:relative">';
+			html += '<svg width="' + total + '" height="' + total + '" xmlns="http://www.w3.org/2000/svg" id="loom-matrix-svg">';
 
 			// Column headers (rotated).
 			sorted.forEach(function(n, i) {
 				var x = margin + i * size + size / 2;
 				var tc = TIER_COLORS[Math.min(3, n.tier || 3)];
-				var lbl = n.label.length > 16 ? n.label.substring(0, 14) + '…' : n.label;
-				svg += '<text x="' + x + '" y="' + (margin - 4) + '" font-size="7" fill="' + tc + '" text-anchor="end" transform="rotate(-55,' + x + ',' + (margin - 4) + ')">' + escHtml(lbl) + '</text>';
+				var lbl = n.label.length > 28 ? n.label.substring(0, 26) + '…' : n.label;
+				html += '<text x="' + x + '" y="' + (margin - 6) + '" font-size="12" fill="' + tc + '" text-anchor="end" font-weight="600" ';
+				html += 'transform="rotate(-55,' + x + ',' + (margin - 6) + ')" class="loom-mx-col" data-col="' + i + '">' + escHtml(lbl) + '</text>';
 			});
 
 			// Rows.
 			sorted.forEach(function(row, ri) {
 				var tc = TIER_COLORS[Math.min(3, row.tier || 3)];
-				var lbl = row.label.length > 18 ? row.label.substring(0, 16) + '…' : row.label;
-				svg += '<text x="' + (margin - 6) + '" y="' + (margin + ri * size + size / 2 + 3) + '" font-size="7" fill="' + tc + '" text-anchor="end">' + escHtml(lbl) + '</text>';
+				var lbl = row.label.length > 30 ? row.label.substring(0, 28) + '…' : row.label;
+				html += '<text x="' + (margin - 8) + '" y="' + (margin + ri * size + size / 2 + 4) + '" font-size="12" fill="' + tc + '" text-anchor="end" font-weight="600" class="loom-mx-row" data-row="' + ri + '">' + escHtml(lbl) + '</text>';
 
 				sorted.forEach(function(col, ci) {
 					var key = row.id + '-' + col.id;
 					var type = edgeSet[key];
-					var fill = type === 'loom' ? '#0d9488' : (type === 'manual' ? '#bae6fd' : '#fafafa');
-					var opacity = type ? 1 : 0.3;
-					svg += '<rect x="' + (margin + ci * size) + '" y="' + (margin + ri * size) + '" width="' + (size - 1) + '" height="' + (size - 1) + '" rx="2" fill="' + fill + '" stroke="#f1f5f9" stroke-width="0.5" opacity="' + opacity + '"/>';
+					var fill = type === 'loom' ? '#0d9488' : (type === 'manual' ? '#93c5fd' : (ri === ci ? '#f8fafc' : '#fafafa'));
+					var opacity = type ? 1 : 0.4;
+					var fromLabel = escHtml(row.label);
+					var toLabel = escHtml(col.label);
+					var title = type ? (fromLabel + ' → ' + toLabel + (type === 'loom' ? ' (LOOM)' : '')) : '';
+
+					html += '<rect x="' + (margin + ci * size) + '" y="' + (margin + ri * size) + '" ';
+					html += 'width="' + (size - 1) + '" height="' + (size - 1) + '" rx="3" ';
+					html += 'fill="' + fill + '" stroke="#e5e7eb" stroke-width="0.5" opacity="' + opacity + '" ';
+					html += 'class="loom-mx-cell" data-row="' + ri + '" data-col="' + ci + '" data-type="' + (type || '') + '" ';
+					html += 'data-from="' + fromLabel + '" data-to="' + toLabel + '" style="cursor:' + (type ? 'pointer' : 'default') + '"/>';
 				});
 			});
 
 			// Legend.
-			var ly = margin + N * size + 14;
-			svg += '<rect x="' + margin + '" y="' + ly + '" width="12" height="12" fill="#0d9488" rx="2"/>';
-			svg += '<text x="' + (margin + 16) + '" y="' + (ly + 10) + '" font-size="9" fill="#374151">LOOM link</text>';
-			svg += '<rect x="' + (margin + 80) + '" y="' + ly + '" width="12" height="12" fill="#bae6fd" rx="2"/>';
-			svg += '<text x="' + (margin + 96) + '" y="' + (ly + 10) + '" font-size="9" fill="#374151">Ręczny link</text>';
+			var ly = margin + N * size + 16;
+			html += '<rect x="' + margin + '" y="' + ly + '" width="14" height="14" fill="#0d9488" rx="3"/>';
+			html += '<text x="' + (margin + 20) + '" y="' + (ly + 11) + '" font-size="13" fill="#374151">LOOM link</text>';
+			html += '<rect x="' + (margin + 100) + '" y="' + ly + '" width="14" height="14" fill="#93c5fd" rx="3"/>';
+			html += '<text x="' + (margin + 120) + '" y="' + (ly + 11) + '" font-size="13" fill="#374151">Ręczny link</text>';
 
-			if (graphNodes.length > 40) {
-				svg += '<text x="' + (margin + 200) + '" y="' + (ly + 10) + '" font-size="9" fill="#94a3b8">Wyświetlam top 40 z ' + graphNodes.length + '</text>';
+			if (graphNodes.length > 35) {
+				html += '<text x="' + (margin + 230) + '" y="' + (ly + 11) + '" font-size="13" fill="#94a3b8">Wyświetlam top 30 z ' + graphNodes.length + '</text>';
 			}
-			svg += '</svg>';
+			html += '</svg>';
 
-			$('#loom-matrix-container').html(svg);
+			// Tooltip div.
+			html += '<div id="loom-mx-tooltip" style="display:none;position:absolute;background:white;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:11px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:10;white-space:nowrap"></div>';
+			html += '</div>';
+
+			$('#loom-matrix-container').html(html);
+
+			// ─── Matrix hover interaction ───
+			$('#loom-matrix-container').on('mouseenter', '.loom-mx-cell', function() {
+				var $cell = $(this);
+				var row = $cell.data('row'), col = $cell.data('col');
+				var type = $cell.data('type');
+
+				// Highlight row + column.
+				$('.loom-mx-cell').each(function() {
+					var $c = $(this);
+					var cr = $c.data('row'), cc = $c.data('col');
+					if (cr === row || cc === col) {
+						$c.attr('stroke', '#0d9488').attr('stroke-width', '1.5');
+					}
+				});
+				$('.loom-mx-row[data-row="' + row + '"]').attr('font-weight', '800').attr('font-size', '14');
+				$('.loom-mx-col[data-col="' + col + '"]').attr('font-weight', '800').attr('font-size', '14');
+
+				// Tooltip.
+				if (type) {
+					var from = $cell.data('from'), to = $cell.data('to');
+					var badge = type === 'loom'
+						? '<span style="background:#ccfbf1;color:#115e59;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:600">LOOM</span>'
+						: '<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:10px;font-size:9px">Ręczny</span>';
+					$('#loom-mx-tooltip').html(from + ' → ' + to + ' ' + badge).css({
+						display: 'block',
+						left: parseInt($cell.attr('x')) + 30,
+						top: parseInt($cell.attr('y')) - 10
+					}).show();
+				}
+			}).on('mouseleave', '.loom-mx-cell', function() {
+				$('.loom-mx-cell').attr('stroke', '#e5e7eb').attr('stroke-width', '0.5');
+				$('.loom-mx-row').attr('font-weight', '500').attr('font-size', '12');
+				$('.loom-mx-col').attr('font-weight', '500').attr('font-size', '12');
+				$('#loom-mx-tooltip').hide();
+			});
 		}
 
 	} // end if(canvas)
@@ -1089,6 +1252,93 @@
 				btn.toggleClass('active', !!newState);
 				btn.attr('title', newState ? 'Money page  -  kliknij aby usunąć' : 'Oznacz jako money page');
 			}
+		});
+	});
+
+	/* =======================================================================
+	   BROKEN LINKS
+	   ======================================================================= */
+	var $brokenList = $('#loom-broken-list');
+	if ($brokenList.length) {
+		$.post(loom_ajax.ajaxurl, {
+			action: 'loom_get_broken_links',
+			nonce: loom_ajax.nonce
+		}, function(res) {
+			if (!res.success || !res.data.length) {
+				$brokenList.html('<p class="loom-muted">✅ Brak broken linków.</p>');
+				return;
+			}
+			var html = '<table class="loom-tbl"><thead><tr>';
+			html += '<th>Źródło</th><th>Anchor text</th><th>Broken URL</th><th style="text-align:center">Typ</th><th style="text-align:center">Akcja</th>';
+			html += '</tr></thead><tbody>';
+
+			res.data.forEach(function(b) {
+				var loomBadge = b.loom ? '<span style="background:#ccfbf1;color:#115e59;padding:1px 6px;border-radius:10px;font-size:9px">LOOM</span>' : '';
+				var shortUrl = b.target_url ? (b.target_url.length > 40 ? b.target_url.substring(0, 38) + '…' : b.target_url) : '<em style="color:#94a3b8">brak URL</em>';
+
+				html += '<tr data-link-id="' + b.id + '">';
+				html += '<td><a href="' + escHtml(b.edit_url || '#') + '" class="loom-link" target="_blank">' + escHtml(b.source_title) + '</a></td>';
+				html += '<td><code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px">' + escHtml(b.anchor) + '</code></td>';
+				html += '<td style="font-size:11px;color:#ef4444;word-break:break-all" title="' + escHtml(b.target_url) + '">' + shortUrl + '</td>';
+				html += '<td style="text-align:center">' + loomBadge + '</td>';
+				html += '<td style="text-align:center;white-space:nowrap">';
+				html += '<button class="loom-btn loom-btn-sm loom-fix-broken" data-lid="' + b.id + '" data-fix="remove" title="Usuń tag &lt;a&gt;, zachowaj tekst" style="margin-right:4px">🗑️ Usuń</button>';
+				html += '<button class="loom-btn loom-btn-sm loom-btn-outline loom-fix-broken-replace" data-lid="' + b.id + '" title="Zamień URL na inny">🔄 Zamień</button>';
+				html += '</td></tr>';
+			});
+			html += '</tbody></table>';
+			$brokenList.html(html);
+		});
+	}
+
+	// Remove broken link.
+	$(document).on('click', '.loom-fix-broken', function() {
+		var $btn = $(this);
+		var lid = $btn.data('lid');
+		$btn.prop('disabled', true).text('⏳');
+
+		$.post(loom_ajax.ajaxurl, {
+			action: 'loom_fix_broken_link',
+			nonce: loom_ajax.nonce,
+			link_id: lid,
+			fix_type: 'remove'
+		}, function(res) {
+			if (res.success) {
+				$btn.closest('tr').fadeOut(300, function() { $(this).remove(); });
+			} else {
+				$btn.prop('disabled', false).text('🗑️ Usuń');
+				alert(res.data || 'Error');
+			}
+		}).fail(function() {
+			$btn.prop('disabled', false).text('🗑️ Usuń');
+		});
+	});
+
+	// Replace broken link URL — prompt for new URL.
+	$(document).on('click', '.loom-fix-broken-replace', function() {
+		var $btn = $(this);
+		var lid = $btn.data('lid');
+		var newUrl = prompt('Podaj nowy URL:');
+		if (!newUrl) return;
+
+		$btn.prop('disabled', true).text('⏳');
+
+		$.post(loom_ajax.ajaxurl, {
+			action: 'loom_fix_broken_link',
+			nonce: loom_ajax.nonce,
+			link_id: lid,
+			fix_type: 'replace',
+			new_url: newUrl
+		}, function(res) {
+			if (res.success) {
+				$btn.closest('tr').css('background', '#f0fdfa').find('td:eq(2)').html('<span style="color:var(--ok)">' + escHtml(newUrl) + '</span>');
+				$btn.text('✅').prop('disabled', true);
+			} else {
+				$btn.prop('disabled', false).text('🔄 Zamień');
+				alert(res.data || 'Error');
+			}
+		}).fail(function() {
+			$btn.prop('disabled', false).text('🔄 Zamień');
 		});
 	});
 

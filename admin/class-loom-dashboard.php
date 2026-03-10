@@ -25,7 +25,7 @@ class Loom_Dashboard {
 		$nodes = array();
 		foreach ( $nodes_raw as $n ) {
 			$nodes[] = array(
-				'id' => intval( $n['post_id'] ), 'label' => mb_substr( $n['post_title'], 0, 22 ),
+				'id' => intval( $n['post_id'] ), 'label' => mb_substr( $n['post_title'], 0, 60 ),
 				'type' => $n['post_type'], 'in' => intval( $n['incoming_links_count'] ),
 				'out' => intval( $n['outgoing_links_count'] ), 'orphan' => intval( $n['is_orphan'] ),
 				'tier' => intval( $n['site_tier'] ?? 3 ), 'pr' => floatval( $n['internal_pagerank'] ?? 0 ),
@@ -93,17 +93,18 @@ class Loom_Dashboard {
 		<div class="loom-tabs">
 			<?php
 			$tabs = array(
-				'overview' => '📊 ' . __( 'Przegląd', 'loom' ),
-				'money'    => '💰 Money Pages',
-				'striking' => '🎯 Striking',
-				'graph'    => '🕸️ Graf',
-				'posts'    => '📋 Posty',
-				'settings' => '⚙️ ' . __( 'Ustawienia', 'loom' ),
+				'overview' => array( '📊 ' . __( 'Przegląd', 'loom' ), __( 'Podsumowanie stanu linkowania wewnętrznego: metryki, equity, szybkie akcje.', 'loom' ) ),
+				'money'    => array( '💰 Money Pages', __( 'Strony konwersji (usługi, produkty). Monitoruj cel linkowania, anchor diversity, pozycję w Google.', 'loom' ) ),
+				'striking' => array( '🎯 Striking', __( 'Strony na pozycji 5-20 w Google. Jeden link wewnętrzny może przesunąć je na stronę 1.', 'loom' ) ),
+				'graph'    => array( '🕸️ Graf', __( 'Wizualizacja grafu linków wewnętrznych: pierścienie, macierz, lista połączeń.', 'loom' ) ),
+				'posts'    => array( '📋 Posty', __( 'Tabela wszystkich stron z metrykami IN/OUT, statusem, filtrami.', 'loom' ) ),
+				'settings' => array( '⚙️ ' . __( 'Ustawienia', 'loom' ), __( 'Wagi scoringu, klucze API, GSC, zarządzanie danymi.', 'loom' ) ),
 			);
-			foreach ( $tabs as $tid => $tlabel ) :
+			foreach ( $tabs as $tid => $tdata ) :
 			?>
 			<a href="<?php echo esc_url( add_query_arg( 'tab', $tid, admin_url( 'admin.php?page=loom' ) ) ); ?>"
-			   class="loom-tab <?php echo $tab === $tid ? 'active' : ''; ?>"><?php echo esc_html( $tlabel ); ?></a>
+			   class="loom-tab <?php echo $tab === $tid ? 'active' : ''; ?>"
+			   title="<?php echo esc_attr( $tdata[1] ); ?>"><?php echo esc_html( $tdata[0] ); ?></a>
 			<?php endforeach; ?>
 		</div>
 
@@ -114,17 +115,25 @@ class Loom_Dashboard {
 		<div class="loom-metrics">
 			<?php
 			$metrics = array(
-				array( '📄', $s['total_posts'], __( 'Stron', 'loom' ), false ),
-				array( '🔴', $s['orphans'], __( 'Orphany', 'loom' ), $s['orphans'] > 0 ),
-				array( '⚫', $s['dead_ends'], 'Dead Ends', $s['dead_ends'] > 0 ),
-				array( '🌉', $s['bridges'], 'Bridges', false ),
-				array( '🔗', $s['loom_links'], __( 'Linki LOOM', 'loom' ), false ),
-				array( '🎯', $s['striking_distance'], 'Striking', false ),
-				array( '⭐', $s['money_pages'], 'Money Pages', false ),
-				array( '💰', '$' . $s['api_cost'], __( 'Koszt API', 'loom' ), false ),
+				array( '📄', $s['total_posts'], __( 'Stron', 'loom' ), false,
+					__( 'Łączna liczba przeskanowanych stron i postów w indeksie LOOM.', 'loom' ) ),
+				array( '🔴', $s['orphans'], __( 'Orphany', 'loom' ), $s['orphans'] > 0,
+					__( 'Strony bez żadnego linka przychodzącego. Google może ich nie znaleźć. Dodaj linki do tych stron z powiązanych artykułów.', 'loom' ) ),
+				array( '⚫', $s['dead_ends'], 'Dead Ends', $s['dead_ends'] > 0,
+					__( 'Strony bez żadnego linka wychodzącego. Użytkownik trafia w ślepy zaułek. Dodaj linki do powiązanych treści.', 'loom' ) ),
+				array( '🌉', $s['bridges'], 'Bridges', false,
+					__( 'Strony-mosty łączące odizolowane grupy treści. Usunięcie takiej strony rozspójniłoby strukturę serwisu.', 'loom' ) ),
+				array( '🔗', $s['loom_links'], __( 'Linki LOOM', 'loom' ), false,
+					__( 'Liczba linków wewnętrznych wstawionych przez LOOM (zatwierdzonych przez Ciebie lub auto-linkowanie).', 'loom' ) ),
+				array( '🎯', $s['striking_distance'], 'Striking', false,
+					__( 'Strony na pozycji 5-20 w Google. Jeden dodatkowy link wewnętrzny może przesunąć je na stronę 1 wyników.', 'loom' ) ),
+				array( '⭐', $s['money_pages'], 'Money Pages', false,
+					__( 'Strony konwersji (usługi, produkty, kontakt). LOOM kieruje equity (wartość linków) w ich stronę.', 'loom' ) ),
+				array( '💰', '$' . $s['api_cost'], __( 'Koszt API', 'loom' ), false,
+					__( 'Łączny koszt wywołań OpenAI API (embeddingi + sugestie GPT). Typowy koszt: ~$0.002 za jedno „Podlinkuj".', 'loom' ) ),
 			);
 			foreach ( $metrics as $m ) : ?>
-			<div class="loom-m <?php echo $m[3] ? 'loom-m-alert' : ''; ?>">
+			<div class="loom-m <?php echo $m[3] ? 'loom-m-alert' : ''; ?>" title="<?php echo esc_attr( $m[4] ); ?>">
 				<div class="loom-m-icon"><?php echo $m[0]; ?></div>
 				<div class="loom-m-val"><?php echo esc_html( $m[1] ); ?></div>
 				<div class="loom-m-lbl"><?php echo esc_html( $m[2] ); ?></div>
@@ -137,22 +146,28 @@ class Loom_Dashboard {
 			<div class="loom-card"><div class="loom-card-body">
 				<h3 style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;margin-bottom:10px">📊 <?php esc_html_e( 'Linkowanie', 'loom' ); ?></h3>
 				<?php foreach ( array(
-					array( '↗️ Śr. OUT', $s['avg_out_links'] ),
-					array( '↙️ Śr. IN', $s['avg_in_links'] ),
-					array( '🔗 Density', $gh['density'] ?? ' - ' ),
-					array( '🧩 Komponenty', $gh['components'] ?? ' - ' ),
-					array( '📐 Max depth', $s['max_depth'] ),
-					array( '❌ Broken', $s['broken_links'] ),
+					array( '↗️ Śr. OUT', $s['avg_out_links'],
+						__( 'Średnia liczba linków wychodzących na stronę. Optymalna wartość: 3-8 dla artykułów, więcej dla pillar pages.', 'loom' ) ),
+					array( '↙️ Śr. IN', $s['avg_in_links'],
+						__( 'Średnia liczba linków przychodzących na stronę. Im wyższa, tym lepsza dystrybucja equity. Cel: ≥3 dla każdej strony.', 'loom' ) ),
+					array( '🔗 Density', $gh['density'] ?? ' - ',
+						__( 'Gęstość grafu: stosunek istniejących linków do wszystkich możliwych. Typowy zdrowy zakres: 2-8%. Zbyt niski = słabe linkowanie, zbyt wysoki = spam.', 'loom' ) ),
+					array( '🧩 Komponenty', $gh['components'] ?? ' - ',
+						__( 'Liczba odizolowanych grup stron. Idealnie: 1 (cała strona jest połączona). >1 = istnieją grupy stron bez połączeń między sobą.', 'loom' ) ),
+					array( '📐 Max depth', $s['max_depth'],
+						__( 'Najgłębsza strona mierzona liczbą kliknięć od homepage. Google zaleca ≤3 kliknięcia. >4 = strona trudno dostępna.', 'loom' ) ),
+					array( '❌ Broken', $s['broken_links'],
+						__( 'Linki prowadzące do nieistniejących stron (post usunięty lub zmieniony URL). Napraw lub usuń te linki.', 'loom' ) ),
 				) as $row ) : ?>
-				<div class="loom-stat-row"><span class="loom-stat-label"><?php echo esc_html( $row[0] ); ?></span><span class="loom-stat-value"><?php echo esc_html( $row[1] ); ?></span></div>
+				<div class="loom-stat-row" title="<?php echo esc_attr( $row[2] ); ?>"><span class="loom-stat-label"><?php echo esc_html( $row[0] ); ?></span><span class="loom-stat-value"><?php echo esc_html( $row[1] ); ?></span></div>
 				<?php endforeach; ?>
 			</div></div>
 
 			<!-- Equity distribution -->
 			<div class="loom-card"><div class="loom-card-body">
-				<h3 style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;margin-bottom:10px">⚖️ <?php esc_html_e( 'Equity', 'loom' ); ?></h3>
+				<h3 style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;margin-bottom:10px" title="<?php esc_attr_e( 'Equity (link juice) to wartość SEO przekazywana przez linki. Powinna być rozłożona równomiernie — nie skoncentrowana na kilku stronach.', 'loom' ); ?>">⚖️ <?php esc_html_e( 'Equity', 'loom' ); ?></h3>
 				<?php if ( ! empty( $gh['equity_top10'] ) ) : $t10 = $gh['equity_top10']; $b50 = $gh['bot50_equity'] ?? 0; ?>
-				<div class="loom-eq-label"><?php printf( esc_html__( 'Top 10%%: %d%% equity', 'loom' ), $t10 ); ?></div>
+				<div class="loom-eq-label" title="<?php esc_attr_e( 'Jaki % całego PageRank trafia do 10% najsilniejszych stron. Poniżej 50% = zdrowy rozkład.', 'loom' ); ?>"><?php printf( esc_html__( 'Top 10%%: %d%% equity', 'loom' ), $t10 ); ?></div>
 				<div class="loom-progress" style="margin-bottom:10px"><div class="loom-progress-fill" style="width:<?php echo esc_attr( $t10 ); ?>%"></div></div>
 				<div class="loom-eq-label"><?php printf( esc_html__( 'Bottom 50%%: %d%% equity', 'loom' ), $b50 ); ?></div>
 				<div class="loom-progress"><div class="loom-progress-fill <?php echo $b50 < 20 ? 'loom-progress-fill-bad' : 'loom-progress-fill-ok'; ?>" style="width:<?php echo esc_attr( $b50 ); ?>%"></div></div>
@@ -166,11 +181,11 @@ class Loom_Dashboard {
 			<div class="loom-card"><div class="loom-card-body">
 				<h3 style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;margin-bottom:10px">⚡ <?php esc_html_e( 'Szybkie akcje', 'loom' ); ?></h3>
 				<div style="display:flex;flex-direction:column;gap:6px">
-				<?php if ( $s['orphans'] > 0 ) : ?><button class="loom-action-btn loom-action-red">🔴 <?php printf( esc_html__( 'Napraw %d orphanów', 'loom' ), $s['orphans'] ); ?></button><?php endif; ?>
-				<?php if ( $s['dead_ends'] > 0 ) : ?><button class="loom-action-btn loom-action-amber">⚫ <?php printf( esc_html__( 'Napraw %d dead endów', 'loom' ), $s['dead_ends'] ); ?></button><?php endif; ?>
-				<?php if ( $s['striking_distance'] > 0 ) : ?><button class="loom-action-btn loom-action-purple">🎯 <?php printf( esc_html__( 'Boost %d striking distance', 'loom' ), $s['striking_distance'] ); ?></button><?php endif; ?>
-				<?php if ( $s['money_deficit'] > 0 ) : ?><button class="loom-action-btn loom-action-yellow">⭐ <?php esc_html_e( 'Wzmocnij money pages', 'loom' ); ?></button><?php endif; ?>
-				<button class="loom-action-btn" style="background:#f1f5f9;color:#374151" id="loom-start-scan">🔄 <?php esc_html_e( 'Przeskanuj ponownie', 'loom' ); ?></button>
+				<?php if ( $s['orphans'] > 0 ) : ?><button class="loom-action-btn loom-action-red" title="<?php esc_attr_e( 'Orphany to strony bez linków przychodzących — Google może ich nie zaindeksować. LOOM zasugeruje linki z powiązanych artykułów.', 'loom' ); ?>">🔴 <?php printf( esc_html__( 'Napraw %d orphanów', 'loom' ), $s['orphans'] ); ?></button><?php endif; ?>
+				<?php if ( $s['dead_ends'] > 0 ) : ?><button class="loom-action-btn loom-action-amber" title="<?php esc_attr_e( 'Dead ends to strony bez linków wychodzących. Użytkownik nie ma gdzie dalej iść. Dodaj linki do powiązanych treści.', 'loom' ); ?>">⚫ <?php printf( esc_html__( 'Napraw %d dead endów', 'loom' ), $s['dead_ends'] ); ?></button><?php endif; ?>
+				<?php if ( $s['striking_distance'] > 0 ) : ?><button class="loom-action-btn loom-action-purple" title="<?php esc_attr_e( 'Strony na pozycji 5-20 w Google. Jeden link wewnętrzny może przesunąć je na stronę 1 i znacząco zwiększyć ruch.', 'loom' ); ?>">🎯 <?php printf( esc_html__( 'Boost %d striking distance', 'loom' ), $s['striking_distance'] ); ?></button><?php endif; ?>
+				<?php if ( $s['money_deficit'] > 0 ) : ?><button class="loom-action-btn loom-action-yellow" title="<?php esc_attr_e( 'Money pages z deficytem linków — nie osiągnęły celu linkowania. Więcej linków = więcej equity = wyższa pozycja.', 'loom' ); ?>">⭐ <?php esc_html_e( 'Wzmocnij money pages', 'loom' ); ?></button><?php endif; ?>
+				<button class="loom-action-btn" style="background:#f1f5f9;color:#374151" id="loom-start-scan" title="<?php esc_attr_e( 'Ponowne skanowanie odświeża indeks treści i linków. Uruchom po dodaniu nowych postów lub zmianach w strukturze.', 'loom' ); ?>">🔄 <?php esc_html_e( 'Przeskanuj ponownie', 'loom' ); ?></button>
 				</div>
 				<div id="loom-scan-progress" style="display:none;margin-top:8px">
 					<div class="loom-progress"><div class="loom-progress-fill" id="loom-progress-fill"></div></div>
@@ -183,6 +198,18 @@ class Loom_Dashboard {
 		<div class="loom-card loom-card-warn"><p>⚠️ <?php esc_html_e( 'Dodaj klucz API OpenAI w', 'loom' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=loom-settings' ) ); ?>"><?php esc_html_e( 'ustawieniach', 'loom' ); ?></a></p></div>
 		<?php endif; ?>
 
+		<?php if ( $s['broken_links'] > 0 ) : ?>
+		<div class="loom-card">
+			<div class="loom-card-header">
+				<h2>❌ <?php printf( esc_html__( 'Broken links (%d)', 'loom' ), $s['broken_links'] ); ?></h2>
+				<span class="loom-badge loom-b-bad" title="<?php esc_attr_e( 'Linki wskazujące na nieistniejące strony. Szkodzą SEO i UX. Napraw je usuwając link lub podmieniając URL.', 'loom' ); ?>"><?php esc_html_e( 'Wymaga naprawy', 'loom' ); ?></span>
+			</div>
+			<div id="loom-broken-list" style="padding:16px">
+				<p class="loom-muted"><?php esc_html_e( 'Ładowanie...', 'loom' ); ?></p>
+			</div>
+		</div>
+		<?php endif; ?>
+
 		<?php // ═══ MONEY PAGES TAB ═══
 		elseif ( $tab === 'money' ) :
 			$money_pages = Loom_DB::get_money_pages_health();
@@ -191,7 +218,13 @@ class Loom_Dashboard {
 			<div class="loom-card-header"><h2>⭐ <?php esc_html_e( 'Money Pages  -  status linkowania', 'loom' ); ?></h2><span class="loom-badge loom-b-neutral"><?php echo esc_html( count( $money_pages ) ); ?> stron</span></div>
 			<?php if ( ! empty( $money_pages ) ) : ?>
 			<table class="loom-tbl"><thead><tr>
-				<th><?php esc_html_e( 'Strona', 'loom' ); ?></th><th class="loom-tc">Prio</th><th>Linki / Cel</th><th class="loom-tc">Anchor%</th><th class="loom-tc">GSC Pos</th><th class="loom-tc">Impr</th><th class="loom-tc">Status</th>
+				<th><?php esc_html_e( 'Strona', 'loom' ); ?></th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Priorytet 1-5 — im wyższy, tym więcej equity LOOM kieruje do tej strony.', 'loom' ); ?>">Prio</th>
+				<th title="<?php esc_attr_e( 'Aktualna liczba linków przychodzących / cel do osiągnięcia. Pasek pokazuje postęp.', 'loom' ); ?>">Linki / Cel</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Zróżnicowanie anchorów: 100% = każdy link ma inny anchor. Poniżej 60% = ryzyko over-optymalizacji.', 'loom' ); ?>">Anchor%</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Średnia pozycja w Google z Google Search Console. Im niższa, tym lepiej.', 'loom' ); ?>">GSC Pos</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Liczba wyświetleń w wynikach Google w ciągu ostatnich 28 dni.', 'loom' ); ?>">Impr</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Krytyczny = brakuje 5+ linków do celu. Potrzebuje = brakuje 1-4 linków. OK = cel osiągnięty.', 'loom' ); ?>">Status</th>
 			</tr></thead><tbody>
 			<?php foreach ( $money_pages as $mp ) :
 				$pct = $mp['goal'] > 0 ? round( $mp['current'] / $mp['goal'] * 100 ) : 0;
@@ -241,7 +274,13 @@ class Loom_Dashboard {
 			</div>
 			<?php if ( ! empty( $striking_pages ) ) : ?>
 			<table class="loom-tbl"><thead><tr>
-				<th><?php esc_html_e( 'Strona', 'loom' ); ?></th><th class="loom-tc">Pozycja</th><th class="loom-tc">Impressions</th><th class="loom-tc">CTR</th><th class="loom-tc">Clicks</th><th>Top query</th><th class="loom-tc">ROI</th>
+				<th><?php esc_html_e( 'Strona', 'loom' ); ?></th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Średnia pozycja w Google. 5-10 = blisko strony 1. 11-20 = strona 2, do przesunięcia jednym linkiem.', 'loom' ); ?>">Pozycja</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Ile razy strona pojawiła się w wynikach Google w ciągu 28 dni. Więcej = większy potencjał ruchu.', 'loom' ); ?>">Impressions</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Click-Through Rate: % osób, które kliknęły po zobaczeniu wyniku. Typowo 1-5% dla pozycji 5-20.', 'loom' ); ?>">CTR</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Rzeczywista liczba kliknięć z Google w ciągu 28 dni.', 'loom' ); ?>">Clicks</th>
+				<th title="<?php esc_attr_e( 'Najczęstsze zapytanie z Google, na które ta strona się wyświetla. Użyj go jako anchor text w linkach.', 'loom' ); ?>">Top query</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Potencjalny zwrot z linkowania: Wysoki = dużo impressions, link może dać duży wzrost ruchu.', 'loom' ); ?>">ROI</th>
 			</tr></thead><tbody>
 			<?php foreach ( $striking_pages as $sp ) :
 				$pos   = floatval( $sp['gsc_position'] );
@@ -280,9 +319,9 @@ class Loom_Dashboard {
 				<h2>🕸️ <?php esc_html_e( 'Mapa powiązań', 'loom' ); ?></h2>
 				<div style="display:flex;gap:8px;align-items:center">
 					<div class="loom-graph-views">
-						<button class="loom-btn loom-btn-sm loom-graph-view-btn active" data-view="rings">🎯 <?php esc_html_e( 'Pierścienie', 'loom' ); ?></button>
-						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="table">📋 <?php esc_html_e( 'Lista', 'loom' ); ?></button>
-						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="matrix">📊 <?php esc_html_e( 'Macierz', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn active" data-view="rings" title="<?php esc_attr_e( 'Koncentryczne ringi wg hierarchii. Kliknij node = pokaż połączenia. Przeciągnij = przesuń.', 'loom' ); ?>">🎯 <?php esc_html_e( 'Pierścienie', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="table" title="<?php esc_attr_e( 'Lista stron z panelem połączeń. Kliknij stronę = zobacz linki IN i OUT.', 'loom' ); ?>">📋 <?php esc_html_e( 'Lista', 'loom' ); ?></button>
+						<button class="loom-btn loom-btn-sm loom-graph-view-btn" data-view="matrix" title="<?php esc_attr_e( 'Macierz NxN. Wiersz = źródło, kolumna = cel. Teal = link LOOM, niebieski = ręczny.', 'loom' ); ?>">📊 <?php esc_html_e( 'Macierz', 'loom' ); ?></button>
 					</div>
 					<button class="loom-btn loom-btn-sm loom-btn-outline" id="loom-recalc-graph">🔄</button>
 				</div>
@@ -290,7 +329,7 @@ class Loom_Dashboard {
 			<!-- Rings view -->
 			<div id="loom-view-rings" class="loom-graph-panel">
 				<canvas id="loom-link-map" width="1100" height="460"></canvas>
-				<p class="loom-map-hint"><?php esc_html_e( 'Kliknij stronę → zobacz jej połączenia. Ringi = hierarchia (Homepage → Pillar → Kategoria → Artykuł).', 'loom' ); ?></p>
+				<p class="loom-map-hint"><?php esc_html_e( 'Kliknij = pokaż połączenia · Przeciągnij = przesuń · Podwójne kliknięcie = reset pozycji', 'loom' ); ?></p>
 			</div>
 			<!-- Table view -->
 			<div id="loom-view-table" class="loom-graph-panel" style="display:none">
@@ -311,24 +350,31 @@ class Loom_Dashboard {
 			<div class="loom-filters">
 				<?php
 				$filters = array(
-					''          => sprintf( __( 'Wszystkie (%d)', 'loom' ), $s['total_posts'] ),
-					'orphans'   => '🔴 Orphany',
-					'weak'      => '🟡 Słabe',
-					'money'     => '⭐ Money',
-					'striking'  => '🎯 Striking',
-					'deadends'  => '⚫ Dead Ends',
+					''          => array( sprintf( __( 'Wszystkie (%d)', 'loom' ), $s['total_posts'] ), __( 'Wszystkie strony w indeksie LOOM.', 'loom' ) ),
+					'orphans'   => array( '🔴 Orphany', __( 'Strony bez żadnego linka przychodzącego. Google może ich nie zaindeksować.', 'loom' ) ),
+					'weak'      => array( '🟡 Słabe', __( 'Strony z tylko 1-2 linkami przychodzącymi. Potrzebują wzmocnienia.', 'loom' ) ),
+					'money'     => array( '⭐ Money', __( 'Strony konwersji oznaczone jako money pages.', 'loom' ) ),
+					'striking'  => array( '🎯 Striking', __( 'Strony na pozycji 5-20 w Google — blisko strony 1 wyników.', 'loom' ) ),
+					'deadends'  => array( '⚫ Dead Ends', __( 'Strony bez linków wychodzących — ślepy zaułek dla użytkownika.', 'loom' ) ),
+					'broken'    => array( '❌ Broken', __( 'Strony zawierające zepsute linki wewnętrzne (prowadzące do nieistniejących stron).', 'loom' ) ),
 				);
-				foreach ( $filters as $fv => $fl ) :
+				foreach ( $filters as $fv => $fdata ) :
 					$href = add_query_arg( array( 'tab' => 'posts', 'filter' => $fv ), admin_url( 'admin.php?page=loom' ) );
 				?>
-				<a href="<?php echo esc_url( $href ); ?>" class="loom-filter <?php echo $filter === $fv ? 'active' : ''; ?>"><?php echo esc_html( $fl ); ?></a>
+				<a href="<?php echo esc_url( $href ); ?>" class="loom-filter <?php echo $filter === $fv ? 'active' : ''; ?>" title="<?php echo esc_attr( $fdata[1] ); ?>"><?php echo esc_html( $fdata[0] ); ?></a>
 				<?php endforeach; ?>
 			</div>
 			<table class="loom-tbl"><thead><tr>
 				<th><?php esc_html_e( 'Tytuł', 'loom' ); ?></th>
-				<th class="loom-tc">IN</th><th class="loom-tc">OUT</th><th class="loom-tc">PR</th>
-				<th class="loom-tc">Depth</th><th class="loom-tc">GSC</th><th class="loom-tc">Impr</th>
-				<th>Keywords</th><th class="loom-tc">Status</th><th class="loom-tc"><?php esc_html_e( 'Akcja', 'loom' ); ?></th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Linki przychodzące — ile stron linkuje DO tej strony. Im więcej, tym silniejsza strona.', 'loom' ); ?>">IN</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Linki wychodzące — ile linków wewnętrznych jest W treści tej strony. 0 = dead end.', 'loom' ); ?>">OUT</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Internal PageRank — siła strony obliczona algorytmem PageRank na grafie Twojej witryny. Wyższa = ważniejsza strona.', 'loom' ); ?>">PR</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Click depth — ile kliknięć od strony głównej. Google zaleca ≤3. Większa głębokość = gorzej zaindeksowana.', 'loom' ); ?>">Depth</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Średnia pozycja w Google z Google Search Console. Dane z ostatnich 28 dni.', 'loom' ); ?>">GSC</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Impressions z Google — ile razy strona wyświetliła się w wynikach wyszukiwania.', 'loom' ); ?>">Impr</th>
+				<th title="<?php esc_attr_e( 'Główne słowa kluczowe wyodrębnione z treści (SEO plugin + tytuł + TF-IDF + opcjonalnie GPT + GSC queries).', 'loom' ); ?>">Keywords</th>
+				<th class="loom-tc" title="<?php esc_attr_e( 'Status strony: Orphan (0 linków IN), Słaby (1-2 IN), Dead End (0 linków OUT), Striking (pozycja 5-20), Hub (10+ IN).', 'loom' ); ?>">Status</th>
+				<th class="loom-tc"><?php esc_html_e( 'Akcja', 'loom' ); ?></th>
 			</tr></thead><tbody>
 			<?php foreach ( $posts as $row ) :
 				if ( $filter === 'orphans' && empty( $row['is_orphan'] ) ) continue;
@@ -336,6 +382,14 @@ class Loom_Dashboard {
 				if ( $filter === 'money' && empty( $row['is_money_page'] ) ) continue;
 				if ( $filter === 'striking' && empty( $row['is_striking_distance'] ) ) continue;
 				if ( $filter === 'deadends' && empty( $row['is_dead_end'] ) ) continue;
+				if ( $filter === 'broken' ) {
+					global $wpdb;
+					$has_broken = (int) $wpdb->get_var( $wpdb->prepare(
+						"SELECT COUNT(*) FROM " . Loom_DB::links_table() . " WHERE source_post_id = %d AND is_broken = 1",
+						$row['post_id']
+					) );
+					if ( ! $has_broken ) continue;
+				}
 
 				$in      = intval( $row['incoming_links_count'] );
 				$is_mp   = ! empty( $row['is_money_page'] );
