@@ -4,7 +4,7 @@ Tags: internal linking, seo, ai, openai, pagerank, google search console
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.3.0
+Stable tag: 2.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -78,6 +78,48 @@ No. Zero frontend scripts. Admin panel only.
 
 == Changelog ==
 
+= 2.4.0 =
+
+**Reverse Orphan Rescue:**
+* New "🔍 Rescue" button on orphan pages — finds articles that SHOULD link to the orphan
+* Uses existing embeddings (zero additional API calls), adaptive similarity threshold (40% lower for orphans)
+* Results shown in modal: candidate pages sorted by similarity, with "already linked" status and edit links
+
+**Structural Page Management:**
+* New 🏗️ toggle per page — mark navigation/menu pages as structural
+* Structural pages excluded from orphan metrics and alerts
+* New dashboard filter "🏗️ Strukturalne" to view marked pages
+* New DB column `is_structural` with automatic migration
+
+**Near-Orphan Tracking:**
+* New status "🟡 Near-orphan" for pages with 1-2 incoming links
+* Separate dashboard counter and filter
+* Distinguished from full orphans in all metrics
+
+**Diagnostics Panel:**
+* New "🩺 Diagnostyka" button — one-click health check
+* Keyword cannibalization: detects 2+ pages competing for same GSC query
+* Anchor cannibalization: detects same anchor text pointing to different pages
+* Duplicate link detection: same source→target with multiple anchors
+* Overlinked page warnings: pages with >20 outgoing links flagged with ⚠️ OL badge
+
+**Silo Integrity Check:**
+* New "🏗️ Sprawdź silo" button — verifies bidirectional linking within topic clusters
+* Reports: pillar not linking to cluster member, member not linking back to pillar
+* Per-cluster issue count with detailed missing link list
+
+**Bidirectional Linking:**
+* GPT system prompt now recommends two-way links for strongly related pages
+* Reason field includes "(↔ bidirectional recommended)" hint when score > 0.6
+
+**Automation:**
+* Weekly auto-rescan via WP Cron (recalc counters, graph, orphan trend)
+* Publish-time orphan alert: admin notice when a new post has 0 incoming links
+* Orphan trend logging after each scan (for future trend chart)
+
+**Bug fix:**
+* Fixed min_similarity setting never saving — JS didn't send the value, always reverted to 0.35
+
 = 2.3.0 =
 
 **New features:**
@@ -107,6 +149,7 @@ No. Zero frontend scripts. Admin panel only.
 * Fixed money_pages_health missing GSC columns (gsc_position, gsc_impressions, gsc_ctr)
 * Fixed the_content crash killing entire scan batch — now try/catch with fallback
 * Fixed GSC URL double encoding — normalize with rtrim/trim
+* Fixed min_similarity setting never saving — JS didn't send the value to PHP, always reverted to 0.35. Now accepts 0.05-0.80 with 0.01 step
 * Fixed JS syntax error (missing closing brace for canvas block) breaking all JS on onboarding
 
 **Performance:**
@@ -132,6 +175,9 @@ No. Zero frontend scripts. Admin panel only.
 * GPT-4o-mini Structured Outputs
 
 == Upgrade Notice ==
+
+= 2.4.0 =
+Major update: Reverse Orphan Rescue, structural page management, near-orphan tracking, diagnostics panel (cannibalization + duplicates + overlink), silo integrity check, bidirectional linking hints, weekly auto-rescan, publish-time alerts. 12 new features from deep internal linking research.
 
 = 2.3.0 =
 Major update: 11-dimensional scoring, paragraph-level matching, 5 graph views (rings, list, scatter, keyword galaxy, anchor explorer), 10 bug fixes, 34 UI tooltips, English translation. Recommended for all users.

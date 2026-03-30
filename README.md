@@ -6,7 +6,7 @@
     <source media="(prefers-color-scheme: light)" srcset="assets/img/logo-wide.png">
     <img src="assets/img/logo-gh.png" alt="LOOM" width="400">
   </picture><br><br>
-  <strong>v2.3.0</strong> · 34 files · 8,142 lines · Zero external PHP dependencies<br>
+  <strong>v2.4.0</strong> · 34 files · 9,192 lines · Zero external PHP dependencies<br>
   WordPress 6.0+ · PHP 8.0+ · OpenAI API · Google Search Console (optional)<br>
   <br>
   Created by <strong><a href="https://marcinzmuda.com">Marcin Żmuda</a></strong>
@@ -78,7 +78,7 @@ LOOM operates in three phases:
 Exact sequence when user clicks "🔗 Podlinkuj":
 
 ```
-Step  1  Loom_DB::get_index_row()              Load source post (34 columns)
+Step  1  Loom_DB::get_index_row()              Load source post (35 columns)
 Step  2  Loom_OpenAI::get_embedding()           Generate 512D embedding if missing
                                                  Input: "title | title | title | 2500 chars"
 Step  3  Loom_DB::get_all_with_embeddings()     Load ALL targets (33 columns each)
@@ -112,7 +112,7 @@ Timing: ~200ms local + 2-4s API + ~1s paragraph embeddings. Cost: ~$0.0015 per r
 ┌──────────────────────────────────────────────────────────────────┐
 │                        USER INTERFACE                            │
 │  Dashboard (6 tabs)      Metabox (per-post)      Bulk Manager    │
-├────────────────────── AJAX (19 endpoints) ───────────────────────┤
+├────────────────────── AJAX (24 endpoints) ───────────────────────┤
 │  Scanner -> Graph + Embeddings + Keywords + GSC -> Similarity      │
 │  -> Composite (11 dims) -> Suggester (GPT) -> Linker -> DB           │
 ├──────────────────────────────────────────────────────────────────┤
@@ -122,7 +122,7 @@ Timing: ~200ms local + 2-4s API + ~1s paragraph embeddings. Cost: ~$0.0015 per r
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-19 PHP classes. Zero Composer. All HTTP via `wp_remote_post()`. All DB via `$wpdb`.
+19 PHP classes. Zero Composer. All HTTP via `wp_remote_post()`. All DB via `$wpdb`. Weekly WP Cron for automated rescan.
 
 ---
 
@@ -130,19 +130,23 @@ Timing: ~200ms local + 2-4s API + ~1s paragraph embeddings. Cost: ~$0.0015 per r
 
 ### 1. Content Scanner
 
-**Class:** `Loom_Scanner` · 215 lines
+**Class:** `Loom_Scanner` · 263 lines
 
-Crawls all posts in AJAX batches of 20. Per post: renders through `the_content` filter, strips HTML to `clean_text`, parses `<a>` tags with DOMDocument (anchor text, target post, nofollow, position as % of text), stores in `loom_index` + `loom_links`. Static URL cache prevents repeated `url_to_postid()` lookups. Triggers keyword extraction layers 0-2.
+Crawls all posts in AJAX batches of 20. Per post: renders through `the_content` filter (wrapped in try/catch for safety), strips HTML to `clean_text`, parses `<a>` tags with DOMDocument (anchor text, target post, nofollow, position as % of text), stores in `loom_index` + `loom_links`. Static URL cache prevents repeated `url_to_postid()` lookups. Triggers keyword extraction layers 0-2. Logs orphan trend after each complete scan.
+
+**WP Cron (v2.4):** Weekly automatic rescan — recalculates counters, graph, click depths, and logs orphan trend. Registered on `plugins_loaded`, cleaned up on deactivation.
+
+**Publish-time orphan alert (v2.4):** On `save_post`, if a new/updated post has 0 incoming links, displays an `admin_notice` warning: "This post is an orphan — open LOOM to generate linking suggestions."
 
 ### 2. Embedding Engine
 
-**Class:** `Loom_OpenAI` · 231 lines · Model: `text-embedding-3-small` at 512D
+**Class:** `Loom_OpenAI` · 292 lines · Model: `text-embedding-3-small` at 512D
 
 Input: `"Title | Title | Title | first 2500 chars of content"`. Title repeated 3× to ensure topic dominates over content tone. 512D via Matryoshka truncation from native 1536D  -  preserves ~99% recall at 3× smaller vectors. Vectors are unit-normalized by OpenAI, enabling dot product as cosine equivalent. Retry: 2× exponential backoff on 429/500+.
 
 ### 3. Two-Stage Similarity Search
 
-**Class:** `Loom_Similarity` · 230 lines
+**Class:** `Loom_Similarity` · 240 lines
 
 **Stage 1 (fast):** First 64 dimensions, full cosine (prefix not unit-normalized). Rejects below `threshold × 0.5`. TOP 50 advance.
 
@@ -206,19 +210,23 @@ Weights configurable via UI sliders. Auto-normalized to sum 1.0.
 
 ### 7. AI Suggestion Engine
 
-**Class:** `Loom_Suggester` · 604 lines · Model: `gpt-4o-mini`, temp 0.3, Structured Outputs
+**Class:** `Loom_Suggester` · 725 lines · Model: `gpt-4o-mini`, temp 0.3, Structured Outputs
 
-System prompt: 4 SEO principles from Google patents, 5-step analysis process, money page + striking distance instructions, paragraph-level placement hints, anchor diversity control rules, 3 few-shot examples, 7 "Common Mistakes to Avoid".
+System prompt: 4 SEO principles from Google patents, 5-step analysis process, money page + striking distance instructions, paragraph-level placement hints, anchor diversity control rules, bidirectional linking hint (v2.4), 3 few-shot examples, 7 "Common Mistakes to Avoid".
 
 JSON schema: `analysis` (chain-of-thought: topics + target evaluation) -> `suggestions` (paragraph, anchor, target, reason, priority). `strict: true` guarantees valid JSON.
 
 **Anchor diversity control (v2.3):** For every target with 2+ incoming links, the prompt includes a full anchor profile breakdown (exact/partial/contextual/generic %) with specific warnings when any category is over-concentrated. GPT is instructed to diversify.
 
+**Bidirectional linking (v2.4):** System prompt now recommends two-way links for strongly related pages (score > 0.6). GPT appends "(↔ bidirectional recommended)" in the reason field when both pages would benefit from linking to each other.
+
+**Reverse Orphan Rescue (v2.4):** New `ajax_reverse_rescue` endpoint — for a given orphan or near-orphan page, searches all other pages by semantic similarity to find articles that SHOULD link to it. Uses adaptive threshold (40% lower than `min_similarity` for pages with ≤2 incoming links). Returns up to 10 candidates with similarity score, already-linked status, PageRank, and direct edit links. Zero additional API calls — uses existing embeddings.
+
 Post-processing: anchor must exist verbatim in paragraph AND in raw `post_content`.
 
 ### 8. Link Inserter
 
-**Class:** `Loom_Linker` · 408 lines
+**Class:** `Loom_Linker` · 585 lines
 
 Finds anchor in `post_content` via `mb_strpos()`. Safety checks: not inside existing `<a>` tag, not inside `<h1>`-`<h6>`. Content backup to post meta before modification. `remove_action('save_post')` before `wp_update_post()` to prevent scan loop.
 
@@ -240,9 +248,18 @@ Money pages (products, services, pricing) get: `money_priority` (1-5), `target_l
 
 ### 11. Site Analysis
 
-**Class:** `Loom_Site_Analysis` · 161 lines
+**Class:** `Loom_Site_Analysis` · 349 lines
 
-Click depth via BFS from homepage. Site tiers: 0=homepage, 1=pillar, 2=category, 3=article. Anchor cannibalization detection. User rejection tracking (3+ = permanent blacklist).
+Click depth via BFS from homepage. Site tiers: 0=homepage, 1=pillar, 2=category, 3=article. User rejection tracking (3+ = permanent blacklist).
+
+**Silo Integrity Check (v2.4):** Verifies bidirectional linking within `loom_clusters`. For each cluster: checks that pillar links to all members AND all members link back to pillar. Reports missing links per cluster with issue count.
+
+**Diagnostics Panel (v2.4):** One-click health check covering 5 areas:
+- **Keyword cannibalization:** Detects 2+ pages sharing the same top GSC query — extracts first query per page from `gsc_top_queries` JSON, groups by normalized query string.
+- **Anchor cannibalization:** Detects same anchor text pointing to 2+ different target pages — signals confused relevance to Google.
+- **Duplicate links:** Finds same source→target pair appearing multiple times with different anchors.
+- **Overlinked pages:** Pages with >20 outgoing links where equity dilution is a concern.
+- **Near-orphan list:** Pages with 1-2 incoming links, sorted by PageRank desc — highest-value pages that need reinforcement first.
 
 ---
 
@@ -294,11 +311,11 @@ Click depth via BFS from homepage. Site tiers: 0=homepage, 1=pillar, 2=category,
 
 | Tab | Content |
 |-----|---------|
-| **📊 Overview** | 8 top metrics, linking averages, equity distribution, quick actions |
+| **📊 Overview** | 11 metrics (incl. near-orphans, structural, overlinked), equity distribution, quick actions (diagnostics, silo check), orphan trend chart, broken links |
 | **💰 Money Pages** | Progress bars (links/goal), anchor diversity, GSC position, status |
 | **🎯 Striking Distance** | Pages at position 5-20 sorted by proximity, impressions, CTR, top query |
-| **🕸️ Graph** | Force-directed canvas with 7 node types and directional arrows |
-| **📋 Posts** | Filterable table (6 filters), 10 columns, ⭐ money toggle, keyword tags |
+| **🕸️ Graph** | 5 views: 🎯 Rings (hierarchy), 📋 List+Panel, 🫧 Bubble Scatter (IN×OUT×PR), 🔑 Keyword Galaxy (GSC queries), 🔗 Anchor Explorer (anchor profiling) |
+| **📋 Posts** | Filterable table (9 filters incl. near-orphan, structural, overlinked), structural 🏗️ toggle, rescue 🔍 button for orphans, ⭐ money toggle |
 | **⚙️ Settings** | 11 weight sliders with live sum, GSC status, general settings |
 
 ---
@@ -319,9 +336,9 @@ Per-post panel below the editor:
 
 ## Database Schema
 
-**`loom_index`**  -  34 columns, 1 row per post. Groups: identity, content, links, structure, embeddings, keywords, graph, money page, GSC, timestamps.
+**`loom_index`**  -  35 columns, 1 row per post. Groups: identity, content, links, structure (incl. `is_structural` v2.4), embeddings, keywords, graph, money page, GSC, timestamps.
 
-**`loom_links`**  -  11 columns, 1 row per link. Includes: anchor_text, link_position (top/middle/bottom), position_percent, is_plugin_generated, is_broken, is_nofollow, anchor_match_score.
+**`loom_links`**  -  12 columns, 1 row per link. Includes: anchor_text, link_position (top/middle/bottom), position_percent, is_plugin_generated, is_broken, is_nofollow, anchor_match_score, created_at.
 
 **`loom_log`**  -  API cost tracking (action, tokens, cost).
 
@@ -333,7 +350,7 @@ Per-post panel below the editor:
 
 ## AJAX API
 
-19 endpoints, all requiring `loom_nonce` verification:
+24 endpoints, all requiring `loom_nonce` verification:
 
 | Endpoint | Cap | Description |
 |----------|-----|-------------|
@@ -355,6 +372,12 @@ Per-post panel below the editor:
 | `loom_set_money_page` | edit_posts | Toggle money page status |
 | `loom_get_money_pages` | edit_posts | Money pages with health metrics |
 | `loom_remove_all_links` | manage_options | Remove ALL LOOM-inserted links |
+| `loom_get_broken_links` | edit_posts | List broken internal links |
+| `loom_fix_broken_link` | edit_posts | Fix or remove a broken link |
+| `loom_set_structural` | manage_options | Toggle structural page status (v2.4) |
+| `loom_reverse_rescue` | edit_posts | Find pages that should link TO an orphan (v2.4) |
+| `loom_silo_check` | manage_options | Verify bidirectional linking within clusters (v2.4) |
+| `loom_diagnostics` | manage_options | Cannibalization, duplicates, overlink check (v2.4) |
 
 ---
 
@@ -365,7 +388,7 @@ Per-post panel below the editor:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `post_types` | `['post','page']` | Post types to index |
-| `min_similarity` | `0.35` | Minimum cosine similarity threshold |
+| `min_similarity` | `0.35` | Minimum cosine similarity threshold (0.05–0.80, step 0.01) |
 | `max_suggestions` | `8` | Max suggestions per Podlinkuj |
 | `language` | `'pl'` | Content language for GPT |
 | `weight_semantic` | `0.22` | Semantic similarity weight |
@@ -397,41 +420,41 @@ Per-post panel below the editor:
 
 ```
 loom/
-├── loom.php                       102 ln  Entry point, constants, 19 AJAX registrations
+├── loom.php                       114 ln  Entry point, constants, 24 AJAX registrations, WP Cron
 ├── uninstall.php                   33 ln  Clean removal of all plugin data
 ├── readme.txt                             WordPress.org plugin header
 ├── README.md                              This documentation
 │
 ├── assets/
-│   ├── css/loom-admin.css         282 ln  Design system (DM Sans, teal palette, tooltip styles)
-│   ├── js/loom-admin.js          1486 ln  Scan, suggestions, 5 graph views, sliders, GSC
+│   ├── css/loom-admin.css         290 ln  Design system (DM Sans, teal palette, tooltip styles)
+│   ├── js/loom-admin.js          1953 ln  5 graph views, rescue modal, diagnostics, silo, trend chart
 │   └── img/                               Logos (square, wide, GitHub, icon-20)
 │
 ├── admin/
-│   ├── class-loom-admin.php       111 ln  Menu, assets, orphan notice
-│   ├── class-loom-dashboard.php   524 ln  6-tab dashboard with 34 tooltips, 5 graph views
+│   ├── class-loom-admin.php       112 ln  Menu, assets, orphan notice
+│   ├── class-loom-dashboard.php   617 ln  6-tab dashboard, structural toggle, near-orphan badges, trend chart
 │   ├── class-loom-metabox.php     195 ln  Per-post panel (GSC, keywords, anchors)
 │   ├── class-loom-bulk.php        126 ln  Multi-post management
 │   ├── class-loom-settings.php    324 ln  API keys, GSC connect, weights, danger zone
 │   └── class-loom-onboarding.php   19 ln  Placeholder
 │
 ├── includes/
-│   ├── class-loom-activator.php   191 ln  Tables, defaults, upgrade migration
-│   ├── class-loom-db.php          443 ln  DB operations (aggregated stats, settings cache)
-│   ├── class-loom-scanner.php     221 ln  Content crawl, <a> parsing, try/catch safety
+│   ├── class-loom-activator.php   200 ln  Tables, defaults, upgrade migration (is_structural)
+│   ├── class-loom-db.php          558 ln  DB ops, structural toggle, orphan trend, duplicate/overlink detection
+│   ├── class-loom-scanner.php     263 ln  Content crawl, WP Cron rescan, publish-time orphan alert
 │   ├── class-loom-openai.php      292 ln  Embeddings (single + batch) + chat with retry
 │   ├── class-loom-similarity.php  240 ln  Two-stage 64D→512D search
 │   ├── class-loom-graph.php       589 ln  PageRank, betweenness, components
 │   ├── class-loom-gsc.php         605 ln  Service Account JWT auth + sync + scoring
 │   ├── class-loom-keywords.php    455 ln  5-layer extraction
 │   ├── class-loom-composite.php   469 ln  11-dimensional scoring, batch prefetch, topical authority
-│   ├── class-loom-suggester.php   610 ln  System prompt, batch paragraph embeddings, JSON schema
+│   ├── class-loom-suggester.php   725 ln  System prompt, paragraph embeddings, reverse rescue, bidirectional
 │   ├── class-loom-analyzer.php     79 ln  Reasonable Surfer + anchor mismatch
 │   ├── class-loom-linker.php      585 ln  Link insertion (paragraph-aware) + removal
-│   └── class-loom-site-analysis.php 161 ln Click depth, cannibalization, rejections
+│   └── class-loom-site-analysis.php 349 ln Silo check, diagnostics, cannibalization ×2, click depth
 │
 └── languages/
-    ├── loom-en_US.po             238 strings  English translation
+    ├── loom-en_US.po             248 strings  English translation
     └── loom-en_US.mo                          Compiled binary
 ```
 
@@ -443,7 +466,8 @@ loom/
 Scanner ──-> loom_index + loom_links
   ├──-> Graph (PageRank, bridges, components)
   ├──-> Keywords (layers 0-2)
-  └──-> Site_Analysis (click depth, tiers)
+  ├──-> Site_Analysis (click depth, tiers)
+  └──-> log_orphan_trend() (v2.4)
 
 OpenAI ──-> Embeddings (512D vectors in loom_index)
 GSC    ──-> Position, impressions, queries in loom_index
@@ -452,9 +476,14 @@ Similarity (needs embeddings) ──-> TOP 30 candidates
 Composite (needs ALL: similarity + graph + GSC + keywords + money) ──-> TOP 15
 Suggester (needs composite + OpenAI chat) ──-> Validated suggestions
 Linker (needs suggestions) ──-> Modified post_content
+
+Reverse Rescue (v2.4) ──-> Similarity search (reversed: orphan = source, all pages = targets)
+Diagnostics (v2.4) ──-> loom_links + loom_index (cannibalization, duplicates, overlink)
+Silo Check (v2.4) ──-> loom_clusters + loom_links (bidirectional verification)
+WP Cron (v2.4) ──-> Scanner.recalc + Graph.analyze + log_orphan_trend (weekly)
 ```
 
-Scanner, Graph, Embeddings, Keywords, GSC all run independently and write to `loom_index`. Pipeline converges at Composite scoring.
+Scanner, Graph, Embeddings, Keywords, GSC all run independently and write to `loom_index`. Pipeline converges at Composite scoring. Reverse Rescue and Diagnostics are read-only — they query existing data without API calls.
 
 ---
 
@@ -462,7 +491,7 @@ Scanner, Graph, Embeddings, Keywords, GSC all run independently and write to `lo
 
 | Layer | Implementation |
 |-------|---------------|
-| Authentication | `check_ajax_referer('loom_nonce')` on all 19 endpoints |
+| Authentication | `check_ajax_referer('loom_nonce')` on all 24 endpoints |
 | Authorization | `manage_options` for admin, `edit_posts` for content |
 | Input | `sanitize_text_field(wp_unslash())` on all POST data |
 | Output | `esc_html()`, `esc_attr()`, `esc_url()` on all rendered values |
@@ -484,6 +513,10 @@ Scanner, Graph, Embeddings, Keywords, GSC all run independently and write to `lo
 | Graph analysis | ~2s | $0 |
 | Single Podlinkuj | ~3-5s | ~$0.001 |
 | GSC sync (50 pages) | ~15s | $0 |
+| Reverse Rescue (v2.4) | ~1s | $0 (uses existing embeddings) |
+| Diagnostics (v2.4) | <1s | $0 (DB queries only) |
+| Silo Check (v2.4) | <1s | $0 (DB queries only) |
+| Weekly Cron rescan (v2.4) | ~10s | $0 (recalc only, no API) |
 
 ---
 
@@ -508,6 +541,49 @@ This plugin connects to:
 ---
 
 ## Changelog
+
+### 2.4.0
+
+**Reverse Orphan Rescue:**
+- New `ajax_reverse_rescue` endpoint — for any orphan/near-orphan page, finds semantically similar articles that could add a link TO it
+- Adaptive similarity threshold: automatically lowered by 40% for pages with 0-2 incoming links
+- Modal UI with candidate list sorted by similarity, already-linked status, PageRank, and direct edit links
+
+**Structural Page Management:**
+- `is_structural` column added to `loom_index` with automatic migration
+- Toggle button 🏗️ in posts table — marks navigation/menu pages
+- Structural pages excluded from orphan/near-orphan metrics and alerts
+- New dashboard filter and counter
+
+**Near-Orphan Tracking (1-2 IN):**
+- New status badge 🟡 "Near-orphan" — distinct from full orphans and weak pages
+- Separate counter in dashboard metrics, separate filter in posts table
+- Included in diagnostics output
+
+**Diagnostics Panel (🩺):**
+- One-click health check covering 5 areas:
+  - Keyword cannibalization: 2+ pages sharing same top GSC query
+  - Anchor cannibalization: same anchor text → different target pages
+  - Duplicate links: same source→target pair with multiple anchors
+  - Overlinked pages: >20 outgoing links with ⚠️ OL badge
+  - Near-orphan list with PageRank and GSC position
+
+**Silo Integrity Check (🏗️):**
+- Verifies bidirectional linking within `loom_clusters`
+- Reports missing: pillar→member links and member→pillar links
+- Per-cluster breakdown with issue count
+
+**Bidirectional Linking Hint:**
+- System prompt updated: GPT recommends `(↔ bidirectional recommended)` in reason field when semantic score > 0.6
+- Encourages mesh linking instead of single-path structures
+
+**Automation & Monitoring:**
+- WP Cron weekly rescan: recalculates counters, graph, click depths, and logs orphan trend
+- Publish-time orphan alert: `admin_notice` when a new post has 0 incoming links
+- `log_orphan_trend()` called after every batch scan — stores orphan/near-orphan counts for trend tracking
+
+**Bug fix:**
+- `min_similarity` setting never persisted — JS omitted value from AJAX, PHP always fell back to 0.35
 
 ### 2.3.0
 
@@ -535,6 +611,7 @@ This plugin connects to:
 - `money_pages_health` missing GSC columns — added `gsc_position`, `gsc_impressions`, `gsc_ctr`
 - `the_content` filter crash killed entire scan batch — now wrapped in try/catch with raw content fallback
 - GSC URL double encoding — normalized with `rtrim(trim())`
+- `min_similarity` setting never persisted — JS omitted the value from AJAX request, PHP always fell back to 0.35. Input now accepts 0.05–0.80 with 0.01 step
 - Link velocity used `last_scanned` (scan date) instead of `post_date` (publication date)
 - JS syntax error: missing `}` for `if(canvas)` block — all JS dead on onboarding page
 

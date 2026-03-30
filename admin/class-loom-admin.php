@@ -50,8 +50,9 @@ class Loom_Admin {
 		);
 
 		wp_localize_script( 'loom-admin', 'loom_ajax', array(
-			'ajaxurl' => admin_url( 'admin-ajax.php' ),
-			'nonce'   => wp_create_nonce( 'loom_nonce' ),
+			'ajaxurl'  => admin_url( 'admin-ajax.php' ),
+			'adminurl' => admin_url(),
+			'nonce'    => wp_create_nonce( 'loom_nonce' ),
 			'i18n'    => array(
 				'scanning'    => __( 'Skanowanie...', 'loom' ),
 				'generating'  => __( 'Generowanie embeddingów...', 'loom' ),

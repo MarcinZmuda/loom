@@ -296,6 +296,9 @@ When the surrounding sentence is about a different topic than the target page, d
 - DO NOT place multiple links in the same sentence.
 - DO NOT suggest a link if the semantic connection is weak or forced.
 - DO NOT repeat an anchor that already exists in the target's anchor profile.
+
+# Bidirectional Linking (v2.4)
+When a target page is closely related (score > 0.6), ALSO consider if the target page should link BACK to the source article. Two-way linking strengthens topical clusters. In your reason field, append "(↔ bidirectional recommended)" when the semantic connection is strong enough that both pages would benefit from linking to each other. This is a hint for the user, not an action.
 PROMPT;
 	}
 
@@ -606,5 +609,117 @@ PROMPT;
 		}
 
 		return $result;
+	}
+
+	/* ===================================================================
+	   v2.4: Reverse Orphan Rescue
+	   For a given orphan page, finds articles that SHOULD link to it.
+	   Uses adaptive threshold (40% lower than normal for orphans).
+	   =================================================================== */
+	public static function ajax_reverse_rescue() {
+		check_ajax_referer( 'loom_nonce', 'nonce' );
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( __( 'Brak uprawnień.', 'loom' ) );
+		}
+
+		$target_id = absint( $_POST['post_id'] ?? 0 );
+		if ( ! $target_id ) {
+			wp_send_json_error( __( 'Nieprawidłowy ID posta.', 'loom' ) );
+		}
+
+		$target_row = Loom_DB::get_index_row( $target_id );
+		if ( ! $target_row || empty( $target_row['embedding'] ) ) {
+			wp_send_json_error( __( 'Brak embeddingu. Wygeneruj embeddingi w ustawieniach.', 'loom' ) );
+		}
+
+		$target_emb = json_decode( $target_row['embedding'], true );
+		if ( ! is_array( $target_emb ) || count( $target_emb ) < 64 ) {
+			wp_send_json_error( __( 'Nieprawidłowy embedding.', 'loom' ) );
+		}
+
+		// Get all other pages with embeddings.
+		global $wpdb;
+		$idx = Loom_DB::index_table();
+		$lnk = Loom_DB::links_table();
+
+		$candidates = $wpdb->get_results( $wpdb->prepare(
+			"SELECT post_id, post_title, post_url, embedding, incoming_links_count, outgoing_links_count,
+			        internal_pagerank, is_money_page, is_striking_distance, cluster_id
+			 FROM {$idx}
+			 WHERE post_id != %d AND embedding IS NOT NULL AND is_structural = 0",
+			$target_id
+		), ARRAY_A );
+
+		if ( empty( $candidates ) ) {
+			wp_send_json_error( __( 'Brak postów z embeddingami do porównania.', 'loom' ) );
+		}
+
+		// Adaptive threshold: 40% lower for orphans.
+		$settings      = Loom_DB::get_settings();
+		$base_threshold = floatval( $settings['min_similarity'] ?? 0.35 );
+		$is_orphan     = intval( $target_row['incoming_links_count'] ?? 0 ) <= 2;
+		$threshold     = $is_orphan ? $base_threshold * 0.6 : $base_threshold;
+
+		// Build embedding array for similarity search.
+		$all_targets = array();
+		foreach ( $candidates as $c ) {
+			$emb = json_decode( $c['embedding'], true );
+			if ( is_array( $emb ) && count( $emb ) >= 64 ) {
+				$all_targets[] = array_merge( $c, array( 'parsed_embedding' => $emb ) );
+			}
+		}
+
+		// Find similar pages (these are potential SOURCE pages that could link TO the orphan).
+		$similar = Loom_Similarity::find_similar( $target_emb, array_map( function( $t ) {
+			return array(
+				'post_id'   => $t['post_id'],
+				'embedding' => $t['parsed_embedding'],
+			);
+		}, $all_targets ), 30, 15 );
+
+		// Filter by threshold and check if link already exists.
+		$results = array();
+		$target_map = array_column( $all_targets, null, 'post_id' );
+
+		foreach ( $similar as $s ) {
+			if ( $s['cosine_similarity'] < $threshold ) continue;
+
+			$source_id = intval( $s['post_id'] );
+			$info      = $target_map[ $source_id ] ?? null;
+			if ( ! $info ) continue;
+
+			// Check if this source already links to our target.
+			$already_linked = (int) $wpdb->get_var( $wpdb->prepare(
+				"SELECT COUNT(*) FROM {$lnk} WHERE source_post_id = %d AND target_post_id = %d",
+				$source_id, $target_id
+			) );
+
+			$results[] = array(
+				'source_id'       => $source_id,
+				'source_title'    => $info['post_title'],
+				'source_url'      => $info['post_url'],
+				'similarity'      => round( $s['cosine_similarity'], 3 ),
+				'already_linked'  => $already_linked > 0,
+				'source_out'      => intval( $info['outgoing_links_count'] ),
+				'source_pr'       => floatval( $info['internal_pagerank'] ?? 0 ),
+				'source_is_money' => intval( $info['is_money_page'] ),
+			);
+		}
+
+		// Sort: not-yet-linked first, then by similarity desc.
+		usort( $results, function( $a, $b ) {
+			if ( $a['already_linked'] !== $b['already_linked'] ) {
+				return $a['already_linked'] ? 1 : -1;
+			}
+			return $b['similarity'] <=> $a['similarity'];
+		} );
+
+		wp_send_json_success( array(
+			'target_id'    => $target_id,
+			'target_title' => $target_row['post_title'],
+			'threshold'    => $threshold,
+			'adaptive'     => $is_orphan,
+			'candidates'   => array_slice( $results, 0, 10 ),
+		) );
 	}
 }

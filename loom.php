@@ -2,8 +2,8 @@
 /**
  * Plugin Name: LOOM
  * Plugin URI:  https://marcinzmuda.com/loom
- * Description: AI-powered internal linking engine. Semantic embeddings, PageRank, 9-dimensional scoring, GPT-4o-mini, Google Search Console integration.
- * Version:     2.3.0
+ * Description: AI-powered internal linking engine. Semantic embeddings, PageRank, 11-dimensional scoring, GPT-4o-mini, Google Search Console integration.
+ * Version:     2.4.0
  * Author:      Marcin Żmuda
  * Author URI:  https://marcinzmuda.com
  * License:     GPL v2 or later
@@ -18,8 +18,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LOOM_VERSION', '2.3.0' );
-define( 'LOOM_DB_VERSION', '2.3' );
+define( 'LOOM_VERSION', '2.4.0' );
+define( 'LOOM_DB_VERSION', '2.4' );
 define( 'LOOM_FILE', __FILE__ );
 define( 'LOOM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'LOOM_URL', plugin_dir_url( __FILE__ ) );
@@ -97,6 +97,18 @@ add_action( 'wp_ajax_loom_fix_broken_link', array( 'Loom_Linker', 'ajax_fix_brok
 add_action( 'wp_ajax_loom_set_money_page', array( 'Loom_DB', 'ajax_set_money_page' ) );
 add_action( 'wp_ajax_loom_get_money_pages', array( 'Loom_DB', 'ajax_get_money_pages' ) );
 
+// v2.4 endpoints.
+add_action( 'wp_ajax_loom_set_structural', array( 'Loom_DB', 'ajax_set_structural' ) );
+add_action( 'wp_ajax_loom_reverse_rescue', array( 'Loom_Suggester', 'ajax_reverse_rescue' ) );
+add_action( 'wp_ajax_loom_silo_check', array( 'Loom_Site_Analysis', 'ajax_silo_check' ) );
+add_action( 'wp_ajax_loom_diagnostics', array( 'Loom_Site_Analysis', 'ajax_diagnostics' ) );
+
 // Content hooks.
 add_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20, 3 );
 add_action( 'before_delete_post', array( 'Loom_Scanner', 'on_delete_post' ) );
+
+// WP Cron: weekly auto-rescan.
+add_action( 'loom_weekly_rescan', array( 'Loom_Scanner', 'cron_weekly_rescan' ) );
+if ( ! wp_next_scheduled( 'loom_weekly_rescan' ) ) {
+	wp_schedule_event( time(), 'weekly', 'loom_weekly_rescan' );
+}

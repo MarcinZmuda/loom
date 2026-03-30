@@ -15,7 +15,7 @@ class Loom_Dashboard {
 
 		$nodes_raw = $wpdb->get_results(
 			"SELECT post_id, post_title, post_type, incoming_links_count, outgoing_links_count,
-			        is_orphan, site_tier, cluster_id, internal_pagerank, is_dead_end, is_bridge,
+			        is_orphan, is_structural, site_tier, cluster_id, internal_pagerank, is_dead_end, is_bridge,
 			        is_money_page, is_striking_distance,
 			        gsc_position, gsc_impressions, gsc_clicks, gsc_ctr, gsc_top_queries
 			 FROM {$idx} ORDER BY incoming_links_count DESC LIMIT 100", ARRAY_A
@@ -29,6 +29,7 @@ class Loom_Dashboard {
 				'id' => intval( $n['post_id'] ), 'label' => mb_substr( $n['post_title'], 0, 60 ),
 				'type' => $n['post_type'], 'in' => intval( $n['incoming_links_count'] ),
 				'out' => intval( $n['outgoing_links_count'] ), 'orphan' => intval( $n['is_orphan'] ),
+				'structural' => intval( $n['is_structural'] ?? 0 ),
 				'tier' => intval( $n['site_tier'] ?? 3 ), 'pr' => floatval( $n['internal_pagerank'] ?? 0 ),
 				'dead_end' => intval( $n['is_dead_end'] ?? 0 ), 'bridge' => intval( $n['is_bridge'] ?? 0 ),
 				'money' => intval( $n['is_money_page'] ?? 0 ), 'striking' => intval( $n['is_striking_distance'] ?? 0 ),
@@ -150,6 +151,10 @@ class Loom_Dashboard {
 					__( 'Łączna liczba przeskanowanych stron i postów w indeksie LOOM.', 'loom' ) ),
 				array( '🔴', $s['orphans'], __( 'Orphany', 'loom' ), $s['orphans'] > 0,
 					__( 'Strony bez żadnego linka przychodzącego. Google może ich nie znaleźć. Dodaj linki do tych stron z powiązanych artykułów.', 'loom' ) ),
+				array( '🟡', $s['near_orphans'] ?? 0, 'Near-orphany', ( $s['near_orphans'] ?? 0 ) > 0,
+					__( 'Strony z tylko 1-2 linkami przychodzącymi. Potrzebują wzmocnienia.', 'loom' ) ),
+				array( '🏗️', $s['structural'] ?? 0, __( 'Strukturalne', 'loom' ), false,
+					__( 'Strony nawigacyjne (menu, footer) — wykluczone z metryk orphanów.', 'loom' ) ),
 				array( '⚫', $s['dead_ends'], 'Dead Ends', $s['dead_ends'] > 0,
 					__( 'Strony bez żadnego linka wychodzącego. Użytkownik trafia w ślepy zaułek. Dodaj linki do powiązanych treści.', 'loom' ) ),
 				array( '🌉', $s['bridges'], 'Bridges', false,
@@ -160,6 +165,8 @@ class Loom_Dashboard {
 					__( 'Strony na pozycji 5-20 w Google. Jeden dodatkowy link wewnętrzny może przesunąć je na stronę 1 wyników.', 'loom' ) ),
 				array( '⭐', $s['money_pages'], 'Money Pages', false,
 					__( 'Strony konwersji (usługi, produkty, kontakt). LOOM kieruje equity (wartość linków) w ich stronę.', 'loom' ) ),
+				array( '⚠️', $s['overlinked'] ?? 0, 'Overlinked', ( $s['overlinked'] ?? 0 ) > 0,
+					__( 'Strony z ponad 20 linkami wychodzącymi. Zbyt wiele linków rozrzedza equity.', 'loom' ) ),
 				array( '💰', '$' . $s['api_cost'], __( 'Koszt API', 'loom' ), false,
 					__( 'Łączny koszt wywołań OpenAI API (embeddingi + sugestie GPT). Typowy koszt: ~$0.002 za jedno „Podlinkuj".', 'loom' ) ),
 			);
@@ -213,15 +220,20 @@ class Loom_Dashboard {
 				<h3 style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;margin-bottom:10px">⚡ <?php esc_html_e( 'Szybkie akcje', 'loom' ); ?></h3>
 				<div style="display:flex;flex-direction:column;gap:6px">
 				<?php if ( $s['orphans'] > 0 ) : ?><button class="loom-action-btn loom-action-red" title="<?php esc_attr_e( 'Orphany to strony bez linków przychodzących — Google może ich nie zaindeksować. LOOM zasugeruje linki z powiązanych artykułów.', 'loom' ); ?>">🔴 <?php printf( esc_html__( 'Napraw %d orphanów', 'loom' ), $s['orphans'] ); ?></button><?php endif; ?>
+				<?php if ( ( $s['near_orphans'] ?? 0 ) > 0 ) : ?><button class="loom-action-btn" style="background:#fef3c7;color:#92400e">🟡 <?php printf( '%d near-orphanów', $s['near_orphans'] ); ?></button><?php endif; ?>
 				<?php if ( $s['dead_ends'] > 0 ) : ?><button class="loom-action-btn loom-action-amber" title="<?php esc_attr_e( 'Dead ends to strony bez linków wychodzących. Użytkownik nie ma gdzie dalej iść. Dodaj linki do powiązanych treści.', 'loom' ); ?>">⚫ <?php printf( esc_html__( 'Napraw %d dead endów', 'loom' ), $s['dead_ends'] ); ?></button><?php endif; ?>
 				<?php if ( $s['striking_distance'] > 0 ) : ?><button class="loom-action-btn loom-action-purple" title="<?php esc_attr_e( 'Strony na pozycji 5-20 w Google. Jeden link wewnętrzny może przesunąć je na stronę 1 i znacząco zwiększyć ruch.', 'loom' ); ?>">🎯 <?php printf( esc_html__( 'Boost %d striking distance', 'loom' ), $s['striking_distance'] ); ?></button><?php endif; ?>
 				<?php if ( $s['money_deficit'] > 0 ) : ?><button class="loom-action-btn loom-action-yellow" title="<?php esc_attr_e( 'Money pages z deficytem linków — nie osiągnęły celu linkowania. Więcej linków = więcej equity = wyższa pozycja.', 'loom' ); ?>">⭐ <?php esc_html_e( 'Wzmocnij money pages', 'loom' ); ?></button><?php endif; ?>
+				<button class="loom-action-btn" style="background:#f0fdfa;color:#0d9488" id="loom-run-diagnostics" title="<?php esc_attr_e( 'Sprawdź kanibalizację, duplikaty linków, overlinked pages, integralność silo.', 'loom' ); ?>">🩺 Diagnostyka</button>
+				<button class="loom-action-btn" style="background:#f0fdfa;color:#0d9488" id="loom-silo-check" title="<?php esc_attr_e( 'Sprawdź czy pillary linkują do wszystkich artykułów w klastrze i odwrotnie.', 'loom' ); ?>">🏗️ Sprawdź silo</button>
 				<button class="loom-action-btn" style="background:#f1f5f9;color:#374151" id="loom-start-scan" title="<?php esc_attr_e( 'Ponowne skanowanie odświeża indeks treści i linków. Uruchom po dodaniu nowych postów lub zmianach w strukturze.', 'loom' ); ?>">🔄 <?php esc_html_e( 'Przeskanuj ponownie', 'loom' ); ?></button>
 				</div>
 				<div id="loom-scan-progress" style="display:none;margin-top:8px">
 					<div class="loom-progress"><div class="loom-progress-fill" id="loom-progress-fill"></div></div>
 					<p id="loom-progress-text" class="loom-progress-label"></p>
 				</div>
+				<div id="loom-diagnostics-result" style="display:none;margin-top:10px;font-size:11px"></div>
+				<div id="loom-silo-result" style="display:none;margin-top:10px;font-size:11px"></div>
 			</div></div>
 		</div>
 
@@ -239,6 +251,25 @@ class Loom_Dashboard {
 				<p class="loom-muted"><?php esc_html_e( 'Ładowanie...', 'loom' ); ?></p>
 			</div>
 		</div>
+		<?php endif; ?>
+
+		<!-- Orphan Trend Chart (v2.4) -->
+		<?php
+		$trend_data = Loom_DB::get_orphan_trend( 15 );
+		if ( ! empty( $trend_data ) && count( $trend_data ) >= 2 ) :
+			$trend_data = array_reverse( $trend_data ); // Oldest first.
+		?>
+		<div class="loom-card"><div class="loom-card-body">
+			<h3 style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;margin-bottom:10px">📈 <?php echo 'Trend orphanów (ostatnie ' . count( $trend_data ) . ' skanów)'; ?></h3>
+			<div id="loom-trend-chart" style="height:140px" data-trend="<?php echo esc_attr( wp_json_encode( array_map( function( $t ) {
+				$d = json_decode( $t['details'], true );
+				return array(
+					'date'    => substr( $t['created_at'], 0, 10 ),
+					'orphans' => intval( $d['orphans'] ?? 0 ),
+					'near'    => intval( $d['near_orphans'] ?? 0 ),
+				);
+			}, $trend_data ) ) ); ?>"></div>
+		</div></div>
 		<?php endif; ?>
 
 		<?php // ═══ MONEY PAGES TAB ═══
@@ -398,11 +429,14 @@ class Loom_Dashboard {
 				<?php
 				$filters = array(
 					''          => array( sprintf( __( 'Wszystkie (%d)', 'loom' ), $s['total_posts'] ), __( 'Wszystkie strony w indeksie LOOM.', 'loom' ) ),
-					'orphans'   => array( '🔴 Orphany', __( 'Strony bez żadnego linka przychodzącego. Google może ich nie zaindeksować.', 'loom' ) ),
+					'orphans'   => array( '🔴 Orphany (' . $s['orphans'] . ')', __( 'Strony bez żadnego linka przychodzącego. Google może ich nie zaindeksować.', 'loom' ) ),
+					'near'      => array( '🟡 Near-orphany (' . ( $s['near_orphans'] ?? 0 ) . ')', __( 'Strony z 1-2 linkami IN — za słabe wsparcie. Potrzebują wzmocnienia.', 'loom' ) ),
+					'structural'=> array( '🏗️ Strukturalne (' . ( $s['structural'] ?? 0 ) . ')', __( 'Strony nawigacyjne wykluczone z metryk orphanów. Linkowane z menu/footera.', 'loom' ) ),
 					'weak'      => array( '🟡 Słabe', __( 'Strony z tylko 1-2 linkami przychodzącymi. Potrzebują wzmocnienia.', 'loom' ) ),
 					'money'     => array( '⭐ Money', __( 'Strony konwersji oznaczone jako money pages.', 'loom' ) ),
 					'striking'  => array( '🎯 Striking', __( 'Strony na pozycji 5-20 w Google — blisko strony 1 wyników.', 'loom' ) ),
 					'deadends'  => array( '⚫ Dead Ends', __( 'Strony bez linków wychodzących — ślepy zaułek dla użytkownika.', 'loom' ) ),
+					'overlinked'=> array( '⚠️ Overlinked (' . ( $s['overlinked'] ?? 0 ) . ')', __( 'Strony z ponad 20 linkami wychodzącymi — equity się rozrzedza.', 'loom' ) ),
 					'broken'    => array( '❌ Broken', __( 'Strony zawierające zepsute linki wewnętrzne (prowadzące do nieistniejących stron).', 'loom' ) ),
 				);
 				foreach ( $filters as $fv => $fdata ) :
@@ -425,10 +459,13 @@ class Loom_Dashboard {
 			</tr></thead><tbody>
 			<?php foreach ( $posts as $row ) :
 				if ( $filter === 'orphans' && empty( $row['is_orphan'] ) ) continue;
+				if ( $filter === 'near' && ( intval( $row['incoming_links_count'] ) < 1 || intval( $row['incoming_links_count'] ) > 2 || ! empty( $row['is_structural'] ) ) ) continue;
+				if ( $filter === 'structural' && empty( $row['is_structural'] ) ) continue;
 				if ( $filter === 'weak' && ( intval( $row['incoming_links_count'] ) >= 3 || ! empty( $row['is_orphan'] ) ) ) continue;
 				if ( $filter === 'money' && empty( $row['is_money_page'] ) ) continue;
 				if ( $filter === 'striking' && empty( $row['is_striking_distance'] ) ) continue;
 				if ( $filter === 'deadends' && empty( $row['is_dead_end'] ) ) continue;
+				if ( $filter === 'overlinked' && intval( $row['outgoing_links_count'] ) <= 20 ) continue;
 				if ( $filter === 'broken' ) {
 					global $wpdb;
 					$has_broken = (int) $wpdb->get_var( $wpdb->prepare(
@@ -449,14 +486,15 @@ class Loom_Dashboard {
 				// Keywords
 				$kw_data = ! empty( $row['focus_keywords'] ) ? json_decode( $row['focus_keywords'], true ) : array();
 			?>
-			<tr>
+			<tr<?php echo ! empty( $row['is_structural'] ) ? ' style="opacity:.6"' : ''; ?>>
 				<td>
+					<button class="loom-structural-toggle <?php echo ! empty( $row['is_structural'] ) ? 'active' : ''; ?>" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>" data-is-structural="<?php echo ! empty( $row['is_structural'] ) ? '1' : '0'; ?>" title="<?php esc_attr_e( 'Oznacz jako stronę strukturalną (menu/footer) — wykluczona z orphan metryk', 'loom' ); ?>" style="background:none;border:1px solid <?php echo ! empty( $row['is_structural'] ) ? 'var(--teal)' : '#e5e7eb'; ?>;border-radius:5px;cursor:pointer;font-size:11px;padding:1px 4px"><?php echo ! empty( $row['is_structural'] ) ? '🏗️' : '·'; ?></button>
 					<button class="loom-money-toggle <?php echo $is_mp ? 'active' : ''; ?>" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>" data-is-money="<?php echo $is_mp ? '1' : '0'; ?>"><?php echo $is_mp ? '⭐' : '☆'; ?></button>
 					<a href="<?php echo esc_url( get_edit_post_link( $row['post_id'] ) ); ?>" class="loom-link"><?php echo esc_html( mb_substr( $row['post_title'], 0, 45 ) ); ?></a>
 					<span class="loom-muted" style="font-size:10px;margin-left:4px"><?php echo esc_html( $row['post_type'] ); ?></span>
 				</td>
 				<td class="loom-tc" style="font-weight:700"><?php echo esc_html( $in ); ?></td>
-				<td class="loom-tc loom-muted"><?php echo esc_html( $row['outgoing_links_count'] ); ?></td>
+				<td class="loom-tc loom-muted"><?php echo intval( $row['outgoing_links_count'] ) > 20 ? '<span style="color:var(--bad);font-weight:700">' . esc_html( $row['outgoing_links_count'] ) . '</span>' : esc_html( $row['outgoing_links_count'] ); ?></td>
 				<td class="loom-tc loom-tn"><?php echo esc_html( $pr_val ); ?></td>
 				<td class="loom-tc"><?php echo esc_html( $ds ); ?></td>
 				<td class="loom-tc"><?php
@@ -469,18 +507,26 @@ class Loom_Dashboard {
 				<td><?php if ( ! empty( $kw_data ) ) : ?><div style="display:flex;flex-wrap:wrap;gap:2px"><?php foreach ( array_slice( $kw_data, 0, 2 ) as $kw ) : ?><span class="loom-code" style="font-size:9px"><?php echo esc_html( mb_substr( $kw['phrase'], 0, 20 ) ); ?></span><?php endforeach; ?></div><?php endif; ?></td>
 				<td class="loom-tc">
 					<?php
-					if ( $row['is_orphan'] )   echo '<span class="loom-badge loom-b-bad">Orphan</span>';
+					if ( ! empty( $row['is_structural'] ) ) echo '<span class="loom-badge" style="background:#f1f5f9;color:#64748b">🏗️</span>';
+					elseif ( $row['is_orphan'] )   echo '<span class="loom-badge loom-b-bad">Orphan</span>';
+					elseif ( $in > 0 && $in <= 2 ) echo '<span class="loom-badge" style="background:#fef3c7;color:#92400e">Near-orphan</span>';
 					if ( $row['is_dead_end'] ) echo '<span class="loom-badge loom-b-warn">DE</span>';
 					if ( $row['is_bridge'] )   echo '<span class="loom-badge loom-b-neutral">🌉</span>';
 					if ( ! empty( $row['is_striking_distance'] ) ) echo '<span class="loom-badge loom-b-striking">🎯</span>';
 					if ( $is_mp )              echo '<span class="loom-badge loom-b-money">💰</span>';
-					if ( ! $row['is_orphan'] && ! $row['is_dead_end'] && $in >= 3 ) echo '<span class="loom-badge loom-b-ok">OK</span>';
-					if ( ! $row['is_orphan'] && $in > 0 && $in < 3 ) echo '<span class="loom-badge loom-b-warn">Słaby</span>';
+					if ( intval( $row['outgoing_links_count'] ) > 20 ) echo '<span class="loom-badge" style="background:#fef2f2;color:#dc2626">⚠️ OL</span>';
+					if ( ! $row['is_orphan'] && empty( $row['is_structural'] ) && ! $row['is_dead_end'] && $in >= 3 ) echo '<span class="loom-badge loom-b-ok">OK</span>';
 					?>
 				</td>
-				<td class="loom-tc"><?php if ( $has_key ) : ?>
-					<button class="loom-btn loom-btn-sm loom-podlinkuj-btn" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>">🔗</button>
-					<button class="loom-btn loom-btn-sm loom-btn-ok loom-auto-btn" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>">⚡</button>
+				<td class="loom-tc"><?php if ( $has_key && empty( $row['is_structural'] ) ) : ?>
+					<?php if ( $row['is_orphan'] ) : ?>
+						<button class="loom-btn loom-btn-sm loom-rescue-btn" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>" style="background:#fef2f2;border-color:#dc2626;color:#dc2626" title="<?php esc_attr_e( 'Reverse Rescue — znajdź artykuły które mogą linkować do tej strony', 'loom' ); ?>">🔍 Rescue</button>
+					<?php else : ?>
+						<button class="loom-btn loom-btn-sm loom-podlinkuj-btn" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>">🔗</button>
+						<button class="loom-btn loom-btn-sm loom-btn-ok loom-auto-btn" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>">⚡</button>
+					<?php endif; ?>
+				<?php elseif ( ! empty( $row['is_structural'] ) ) : ?>
+					<span class="loom-muted" style="font-size:10px">—</span>
 				<?php endif; ?></td>
 			</tr>
 			<?php endforeach; ?>
@@ -492,7 +538,7 @@ class Loom_Dashboard {
 		<div class="loom-grid-2">
 			<!-- Weights -->
 			<div class="loom-card"><div class="loom-card-body">
-				<h3 style="font-size:13px;font-weight:700;margin-bottom:12px"><?php esc_html_e( 'Wagi composite score (9 wymiarów)', 'loom' ); ?></h3>
+				<h3 style="font-size:13px;font-weight:700;margin-bottom:12px"><?php esc_html_e( 'Wagi composite score (11 wymiarów)', 'loom' ); ?></h3>
 				<?php
 				$dims = array(
 					array( 'semantic', '🧠', 'Semantic', 'Cosine similarity' ),
@@ -548,7 +594,7 @@ class Loom_Dashboard {
 
 				<div class="loom-card"><div class="loom-card-body">
 					<h3 style="font-size:13px;font-weight:700;margin-bottom:10px">🎛️ <?php esc_html_e( 'Ogólne', 'loom' ); ?></h3>
-					<div class="loom-settings-row"><label>Min. similarity</label><input type="number" class="loom-settings-input" name="loom_min_similarity" value="<?php echo esc_attr( $settings['min_similarity'] ?? 0.35 ); ?>" min="0.1" max="0.8" step="0.05"></div>
+					<div class="loom-settings-row"><label>Min. similarity</label><input type="number" class="loom-settings-input" name="loom_min_similarity" value="<?php echo esc_attr( $settings['min_similarity'] ?? 0.35 ); ?>" min="0.05" max="0.8" step="0.01"></div>
 					<div class="loom-settings-row"><label>Max sugestii</label><input type="number" class="loom-settings-input" name="loom_max_suggestions" value="<?php echo esc_attr( $settings['max_suggestions'] ?? 8 ); ?>" min="3" max="15"></div>
 					<div class="loom-settings-row"><label>Język</label>
 						<select class="loom-settings-select" name="loom_language">

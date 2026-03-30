@@ -152,8 +152,8 @@ class Loom_DB {
 			SELECT COUNT(*) FROM {$lnk} WHERE target_post_id = i.post_id
 		)" );
 
-		// Orphans.
-		$wpdb->query( "UPDATE {$idx} SET is_orphan = CASE WHEN incoming_links_count = 0 THEN 1 ELSE 0 END" );
+		// Orphans (structural pages excluded).
+		$wpdb->query( "UPDATE {$idx} SET is_orphan = CASE WHEN incoming_links_count = 0 AND is_structural = 0 THEN 1 ELSE 0 END" );
 	}
 
 	public static function recalc_counters_for_post( $post_id ) {
@@ -168,10 +168,14 @@ class Loom_DB {
 			"SELECT COUNT(*) FROM {$lnk} WHERE target_post_id = %d", $post_id
 		) );
 
+		$is_structural = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT is_structural FROM {$idx} WHERE post_id = %d", $post_id
+		) );
+
 		$wpdb->update( $idx, array(
 			'outgoing_links_count' => $out,
 			'incoming_links_count' => $in,
-			'is_orphan'            => $in === 0 ? 1 : 0,
+			'is_orphan'            => ( $in === 0 && ! $is_structural ) ? 1 : 0,
 		), array( 'post_id' => $post_id ) );
 	}
 
@@ -195,7 +199,10 @@ class Loom_DB {
 				SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS emb_done,
 				SUM(CASE WHEN focus_keywords IS NOT NULL AND focus_keywords != '' THEN 1 ELSE 0 END) AS kw_done,
 				SUM(CASE WHEN click_depth > 3 OR click_depth IS NULL THEN 1 ELSE 0 END) AS deep_pages,
-				SUM(CASE WHEN incoming_links_count > 0 AND incoming_links_count < 3 THEN 1 ELSE 0 END) AS weak,
+				SUM(CASE WHEN incoming_links_count > 0 AND incoming_links_count < 3 AND is_structural = 0 THEN 1 ELSE 0 END) AS weak,
+				SUM(is_structural) AS structural,
+				SUM(CASE WHEN incoming_links_count > 0 AND incoming_links_count <= 2 AND is_structural = 0 THEN 1 ELSE 0 END) AS near_orphans,
+				SUM(CASE WHEN outgoing_links_count > 20 THEN 1 ELSE 0 END) AS overlinked,
 				ROUND(AVG(outgoing_links_count), 1) AS avg_out,
 				ROUND(AVG(incoming_links_count), 1) AS avg_in,
 				MAX(click_depth) AS max_depth,
@@ -223,7 +230,10 @@ class Loom_DB {
 		return array(
 			'total_posts'       => $total,
 			'orphans'           => intval( $agg['orphans'] ?? 0 ),
+			'near_orphans'      => intval( $agg['near_orphans'] ?? 0 ),
+			'structural'        => intval( $agg['structural'] ?? 0 ),
 			'weak_pages'        => intval( $agg['weak'] ?? 0 ),
+			'overlinked'        => intval( $agg['overlinked'] ?? 0 ),
 			'avg_out_links'     => floatval( $agg['avg_out'] ?? 0 ),
 			'avg_in_links'      => floatval( $agg['avg_in'] ?? 0 ),
 			'total_links'       => intval( $lnk_agg['total_links'] ?? 0 ),
@@ -439,5 +449,110 @@ class Loom_DB {
 		}
 
 		return $result;
+	}
+
+	/* ===================================================================
+	   v2.4: Toggle structural page status (AJAX).
+	   =================================================================== */
+	public static function ajax_set_structural() {
+		check_ajax_referer( 'loom_nonce', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( __( 'Brak uprawnień.', 'loom' ) );
+		}
+
+		$post_id      = absint( $_POST['post_id'] ?? 0 );
+		$is_structural = absint( $_POST['is_structural'] ?? 0 ) ? 1 : 0;
+
+		if ( ! $post_id ) {
+			wp_send_json_error( __( 'Nieprawidłowy ID posta.', 'loom' ) );
+		}
+
+		global $wpdb;
+		$idx = self::index_table();
+		$wpdb->update( $idx, array(
+			'is_structural' => $is_structural,
+			'is_orphan'     => ( $is_structural ) ? 0 : null, // Will be recalculated.
+		), array( 'post_id' => $post_id ) );
+
+		// Recalculate orphan status properly.
+		self::recalc_counters_for_post( $post_id );
+
+		wp_send_json_success( array(
+			'post_id'       => $post_id,
+			'is_structural' => $is_structural,
+		) );
+	}
+
+	/* ===================================================================
+	   v2.4: Log orphan trend (called after each scan).
+	   =================================================================== */
+	public static function log_orphan_trend() {
+		global $wpdb;
+		$idx   = self::index_table();
+		$stats = $wpdb->get_row(
+			"SELECT SUM(is_orphan) AS orphans,
+			        SUM(CASE WHEN incoming_links_count > 0 AND incoming_links_count <= 2 AND is_structural = 0 THEN 1 ELSE 0 END) AS near_orphans,
+			        COUNT(*) AS total
+			 FROM {$idx}",
+			ARRAY_A
+		);
+
+		self::log( 'orphan_trend', null, array(
+			'orphans'      => intval( $stats['orphans'] ?? 0 ),
+			'near_orphans' => intval( $stats['near_orphans'] ?? 0 ),
+			'total'        => intval( $stats['total'] ?? 0 ),
+		) );
+	}
+
+	/* ===================================================================
+	   v2.4: Get orphan trend data for chart.
+	   =================================================================== */
+	public static function get_orphan_trend( $limit = 20 ) {
+		global $wpdb;
+		$log = $wpdb->prefix . 'loom_logs';
+		return $wpdb->get_results( $wpdb->prepare(
+			"SELECT created_at, details FROM {$log}
+			 WHERE action = 'orphan_trend'
+			 ORDER BY created_at DESC LIMIT %d",
+			$limit
+		), ARRAY_A );
+	}
+
+	/* ===================================================================
+	   v2.4: Find duplicate internal links (same source→target, different anchors).
+	   =================================================================== */
+	public static function find_duplicate_links() {
+		global $wpdb;
+		$lnk = self::links_table();
+		$idx = self::index_table();
+		return $wpdb->get_results(
+			"SELECT l.source_post_id, l.target_post_id, COUNT(*) AS link_count,
+			        GROUP_CONCAT(l.anchor_text SEPARATOR ' | ') AS anchors,
+			        si.post_title AS source_title, ti.post_title AS target_title
+			 FROM {$lnk} l
+			 JOIN {$idx} si ON l.source_post_id = si.post_id
+			 JOIN {$idx} ti ON l.target_post_id = ti.post_id
+			 WHERE l.target_post_id > 0
+			 GROUP BY l.source_post_id, l.target_post_id
+			 HAVING link_count > 1
+			 ORDER BY link_count DESC
+			 LIMIT 50",
+			ARRAY_A
+		);
+	}
+
+	/* ===================================================================
+	   v2.4: Find overlinked pages (>20 outgoing links).
+	   =================================================================== */
+	public static function find_overlinked_pages( $threshold = 20 ) {
+		global $wpdb;
+		$idx = self::index_table();
+		return $wpdb->get_results( $wpdb->prepare(
+			"SELECT post_id, post_title, outgoing_links_count, incoming_links_count, internal_pagerank
+			 FROM {$idx}
+			 WHERE outgoing_links_count > %d
+			 ORDER BY outgoing_links_count DESC",
+			$threshold
+		), ARRAY_A );
 	}
 }

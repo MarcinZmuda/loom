@@ -178,7 +178,7 @@ class Loom_Settings {
 
 					<div class="loom-field">
 						<label><?php esc_html_e( 'Min. similarity (próg trafności)', 'loom' ); ?></label>
-						<input type="number" name="loom_min_similarity" min="0.1" max="0.8" step="0.05"
+						<input type="number" name="loom_min_similarity" min="0.05" max="0.8" step="0.01"
 						       value="<?php echo esc_attr( $settings['min_similarity'] ?? 0.35 ); ?>">
 						<p class="description"><?php esc_html_e( 'Posty z similarity poniżej tego progu nie będą proponowane jako targety. Domyślnie 0.35.', 'loom' ); ?></p>
 					</div>
@@ -199,10 +199,10 @@ class Loom_Settings {
 						</label>
 					</div>
 
-					<button type="button" class="button button-primary" id="loom-save-settings">
+					<button type="button" class="button button-primary" id="loom-save-settings" data-orig-text="<?php esc_attr_e( 'Zapisz ustawienia', 'loom' ); ?>">
 						<?php esc_html_e( 'Zapisz ustawienia', 'loom' ); ?>
 					</button>
-					<span id="loom-settings-status" class="loom-status-text"></span>
+					<span id="loom-settings-status" class="loom-status-text" style="margin-left:10px;font-weight:600"></span>
 				</div>
 
 				<!-- Composite Weights -->
@@ -290,10 +290,13 @@ class Loom_Settings {
 			$max_sugg = max( 3, min( 15, $max_sugg ) );
 
 			$settings = Loom_DB::get_settings();
+			$old_types = $settings['post_types'] ?? array( 'post' );
+			$types_changed = $raw_types !== $old_types;
+
 			$settings['post_types']      = $raw_types;
 			$settings['max_suggestions'] = $max_sugg;
-			$settings['min_similarity']  = max( 0.1, min( 0.8, floatval(
-				sanitize_text_field( wp_unslash( $_POST['min_similarity'] ?? 0.35 ) )
+			$settings['min_similarity']  = max( 0.05, min( 0.8, floatval(
+				str_replace( ',', '.', sanitize_text_field( wp_unslash( $_POST['min_similarity'] ?? '0.35' ) ) )
 			) ) );
 			$settings['rescan_on_save']  = ! empty( $_POST['rescan_on_save'] );
 			$settings['admin_notices']   = ! empty( $_POST['admin_notices'] );
@@ -316,6 +319,14 @@ class Loom_Settings {
 			}
 
 			update_option( 'loom_settings', $settings );
+
+			if ( $types_changed ) {
+				wp_send_json_success( array(
+					'message'       => __( 'Ustawienia zapisane.', 'loom' ),
+					'types_changed' => true,
+					'new_types'     => $raw_types,
+				) );
+			}
 			wp_send_json_success( __( 'Ustawienia zapisane.', 'loom' ) );
 		}
 

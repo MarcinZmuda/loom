@@ -503,6 +503,7 @@
 	   SETTINGS: Save General
 	   ======================================================================= */
 	$(document).on('click', '#loom-save-settings', function() {
+		var btn = $(this);
 		var types = [];
 		$('input[name="loom_post_types[]"]:checked').each(function() {
 			types.push($(this).val());
@@ -514,6 +515,7 @@
 			action_type: 'save_settings',
 			post_types: types,
 			max_suggestions: $('input[name="loom_max_suggestions"]').val(),
+			min_similarity: parseFloat(($('input[name="loom_min_similarity"]').val() || '0.35').replace(',', '.')) || 0.35,
 			rescan_on_save: $('input[name="loom_rescan_on_save"]').is(':checked') ? 1 : 0,
 			admin_notices: $('input[name="loom_admin_notices"]').is(':checked') ? 1 : 0
 		};
@@ -523,15 +525,53 @@
 			data[$(this).attr('name')] = $(this).val();
 		});
 
+		btn.prop('disabled', true).text('⏳ Zapisywanie...');
+		$('#loom-settings-status').text('');
+
 		$.ajax({
 			url: loom_ajax.ajaxurl,
 			type: 'POST',
 			data: data,
+			timeout: 15000,
 			success: function(res) {
-				$('#loom-settings-status').text(res.success ? '✅ ' + res.data : '❌ ' + res.data);
+				btn.prop('disabled', false).text(btn.data('orig-text') || 'Zapisz ustawienia');
+				if (res.success) {
+					var msg = typeof res.data === 'string' ? res.data : (res.data.message || 'Zapisano');
+					$('#loom-settings-status').html('<span style="color:#16a34a">✅ ' + msg + '</span>');
+
+					// If post types changed, prompt for rescan.
+					if (res.data && res.data.types_changed) {
+						var rescanHtml = '<div style="margin-top:12px;padding:12px 16px;background:#fef3c7;border:2px solid #f59e0b;border-radius:10px">';
+						rescanHtml += '<strong style="color:#92400e">⚠️ Zmieniono typy postów!</strong>';
+						rescanHtml += '<p style="font-size:12px;color:#92400e;margin:4px 0 8px">Nowe typy postów zostaną dodane do indeksu dopiero po ponownym skanie.</p>';
+						rescanHtml += '<button type="button" class="button button-primary" id="loom-rescan-after-types" style="background:#f59e0b;border-color:#d97706">🔄 Skanuj teraz</button>';
+						rescanHtml += '</div>';
+						$('#loom-settings-status').after(rescanHtml);
+					}
+				} else {
+					$('#loom-settings-status').html('<span style="color:#dc2626">❌ ' + (res.data || 'Nieznany błąd') + '</span>');
+				}
+			},
+			error: function(xhr, status, err) {
+				btn.prop('disabled', false).text(btn.data('orig-text') || 'Zapisz ustawienia');
+				$('#loom-settings-status').html('<span style="color:#dc2626">❌ AJAX error: ' + status + ' — ' + err + ' (HTTP ' + xhr.status + ')</span>');
 			}
 		});
 	});
+
+	$(document).on('click', '#loom-rescan-after-types', function() {
+		var btn = $(this);
+		btn.prop('disabled', true).text('⏳ Przekierowuję...');
+		window.location.href = loom_ajax.adminurl + 'admin.php?page=loom&auto_scan=1';
+	});
+
+	// Auto-scan on dashboard if redirected from settings.
+	if (window.location.search.indexOf('auto_scan=1') >= 0) {
+		setTimeout(function() {
+			var scanBtn = $('#loom-start-scan');
+			if (scanBtn.length) scanBtn.trigger('click');
+		}, 500);
+	}
 
 	// Calculate weight sum.
 	$(document).on('input', '.loom-weight-input', function() {
@@ -1478,6 +1518,250 @@
 	});
 
 	/* =======================================================================
+	   STRUCTURAL PAGE TOGGLE (v2.4)
+	   ======================================================================= */
+	$(document).on('click', '.loom-structural-toggle', function() {
+		var btn = $(this);
+		var postId = btn.data('post-id');
+		var current = parseInt(btn.data('is-structural')) === 1;
+		var newState = current ? 0 : 1;
+
+		$.post(loom_ajax.ajaxurl, {
+			action: 'loom_set_structural',
+			nonce: loom_ajax.nonce,
+			post_id: postId,
+			is_structural: newState
+		}, function(res) {
+			if (res.success) {
+				btn.data('is-structural', newState);
+				btn.text(newState ? '🏗️' : '·');
+				btn.toggleClass('active', !!newState);
+				btn.css('border-color', newState ? 'var(--teal)' : '#e5e7eb');
+				var row = btn.closest('tr');
+				row.css('opacity', newState ? '.6' : '1');
+				// Reload page to update counts.
+				if (newState) { setTimeout(function() { location.reload(); }, 500); }
+			}
+		});
+	});
+
+	/* =======================================================================
+	   REVERSE ORPHAN RESCUE (v2.4)
+	   ======================================================================= */
+	$(document).on('click', '.loom-rescue-btn', function() {
+		var btn = $(this);
+		var postId = btn.data('post-id');
+		btn.prop('disabled', true).text('⏳...');
+
+		$.post(loom_ajax.ajaxurl, {
+			action: 'loom_reverse_rescue',
+			nonce: loom_ajax.nonce,
+			post_id: postId
+		}, function(res) {
+			btn.prop('disabled', false).text('🔍 Rescue');
+			if (!res.success) {
+				alert(res.data || 'Error');
+				return;
+			}
+			var d = res.data;
+			var candidates = d.candidates || [];
+			if (!candidates.length) {
+				alert('Brak kandydatów — żaden artykuł nie jest wystarczająco powiązany semantycznie.');
+				return;
+			}
+
+			// Build results popup.
+			var html = '<div style="max-width:600px;max-height:400px;overflow-y:auto;padding:16px">';
+			html += '<h3 style="margin:0 0 8px;font-size:14px">🔍 Reverse Rescue: ' + d.target_title + '</h3>';
+			html += '<p style="font-size:11px;color:#64748b;margin:0 0 12px">Te artykuły mogą dodać link DO tej strony' + (d.adaptive ? ' (adaptacyjny próg: ' + d.threshold.toFixed(2) + ')' : '') + '</p>';
+
+			candidates.forEach(function(c) {
+				var linked = c.already_linked;
+				html += '<div style="padding:8px 10px;background:' + (linked ? '#f9fafb' : '#f0fdfa') + ';border:1px solid ' + (linked ? '#e5e7eb' : '#99f6e4') + ';border-radius:8px;margin-bottom:4px;font-size:12px">';
+				html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+				html += '<strong>' + c.source_title + '</strong>';
+				html += '<span style="font-size:10px;color:' + (linked ? '#94a3b8' : '#0d9488') + ';font-weight:700">' + (linked ? '✅ Już linkuje' : 'sim: ' + c.similarity) + '</span>';
+				html += '</div>';
+				html += '<div style="font-size:10px;color:#94a3b8;margin-top:2px">OUT: ' + c.source_out + ' · PR: ' + (c.source_pr * 100).toFixed(1) + (c.source_is_money ? ' · ⭐ Money' : '') + '</div>';
+				if (!linked) {
+					html += '<div style="margin-top:4px"><a href="' + loom_ajax.adminurl + 'post.php?post=' + c.source_id + '&action=edit" target="_blank" class="loom-btn loom-btn-sm" style="font-size:10px">✏️ Otwórz & Podlinkuj</a></div>';
+				}
+				html += '</div>';
+			});
+			html += '</div>';
+
+			// Show in a modal-like overlay.
+			var $overlay = $('<div>').css({
+				position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+				background: 'rgba(0,0,0,.4)', zIndex: 99999, display: 'flex',
+				alignItems: 'center', justifyContent: 'center'
+			}).appendTo('body');
+
+			var $modal = $('<div>').css({
+				background: 'white', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,.2)',
+				position: 'relative', maxWidth: '90vw'
+			}).html(html + '<button class="loom-rescue-close" style="position:absolute;top:8px;right:12px;background:none;border:none;font-size:18px;cursor:pointer">✕</button>').appendTo($overlay);
+
+			$overlay.on('click', function(e) { if (e.target === $overlay[0]) $overlay.remove(); });
+			$modal.on('click', '.loom-rescue-close', function() { $overlay.remove(); });
+		});
+	});
+
+	/* =======================================================================
+	   DIAGNOSTICS (v2.4)
+	   ======================================================================= */
+	$(document).on('click', '#loom-run-diagnostics', function() {
+		var btn = $(this);
+		btn.prop('disabled', true).text('⏳ Analizowanie...');
+		var $result = $('#loom-diagnostics-result');
+
+		$.post(loom_ajax.ajaxurl, {
+			action: 'loom_diagnostics',
+			nonce: loom_ajax.nonce
+		}, function(res) {
+			btn.prop('disabled', false).text('🩺 Diagnostyka');
+			if (!res.success) { $result.html('<p style="color:var(--bad)">Błąd: ' + (res.data || '') + '</p>').show(); return; }
+
+			var d = res.data, c = d.counts, html = '';
+
+			// Keyword cannibalization.
+			if (c.kw_cannibal > 0) {
+				html += '<div style="padding:8px 10px;background:#fef2f2;border-radius:8px;margin-bottom:6px"><strong style="color:#dc2626">🔴 Kanibalizacja keywords (' + c.kw_cannibal + ')</strong>';
+				d.keyword_cannibalization.forEach(function(k) {
+					html += '<div style="margin-top:4px;padding:4px 8px;background:white;border-radius:5px;font-size:10px">';
+					html += '<strong>"' + k.query + '"</strong> — ';
+					k.pages.forEach(function(p) { html += p.title + ' (poz: ' + p.position.toFixed(1) + '), '; });
+					html += '</div>';
+				});
+				html += '</div>';
+			}
+
+			// Anchor cannibalization.
+			if (c.anchor_cannibal > 0) {
+				html += '<div style="padding:8px 10px;background:#fef3c7;border-radius:8px;margin-bottom:6px"><strong style="color:#92400e">🟡 Kanibalizacja anchorów (' + c.anchor_cannibal + ')</strong>';
+				d.anchor_cannibalization.slice(0, 5).forEach(function(a) {
+					html += '<div style="margin-top:4px;font-size:10px">"' + a.anchor_text + '" → ' + a.target_count + ' stron: ' + a.target_titles + '</div>';
+				});
+				html += '</div>';
+			}
+
+			// Duplicates.
+			if (c.duplicates > 0) {
+				html += '<div style="padding:8px 10px;background:#f0fdfa;border-radius:8px;margin-bottom:6px"><strong style="color:#0d9488">🔗 Duplikaty linków (' + c.duplicates + ')</strong>';
+				d.duplicate_links.slice(0, 5).forEach(function(dup) {
+					html += '<div style="margin-top:4px;font-size:10px">' + dup.source_title + ' → ' + dup.target_title + ' (' + dup.link_count + '× anchory: ' + dup.anchors + ')</div>';
+				});
+				html += '</div>';
+			}
+
+			// Overlinked.
+			if (c.overlinked > 0) {
+				html += '<div style="padding:8px 10px;background:#fef2f2;border-radius:8px;margin-bottom:6px"><strong style="color:#dc2626">⚠️ Overlinked (' + c.overlinked + ')</strong>';
+				d.overlinked_pages.slice(0, 5).forEach(function(p) {
+					html += '<div style="margin-top:4px;font-size:10px">' + p.post_title + ' — ' + p.outgoing_links_count + ' OUT</div>';
+				});
+				html += '</div>';
+			}
+
+			if (!html) html = '<div style="padding:8px 10px;background:#dcfce7;border-radius:8px;color:#16a34a;font-weight:700">✅ Brak problemów! Struktura linkowania wygląda zdrowo.</div>';
+
+			$result.html(html).show();
+		});
+	});
+
+	/* =======================================================================
+	   SILO INTEGRITY CHECK (v2.4)
+	   ======================================================================= */
+	$(document).on('click', '#loom-silo-check', function() {
+		var btn = $(this);
+		btn.prop('disabled', true).text('⏳...');
+		var $result = $('#loom-silo-result');
+
+		$.post(loom_ajax.ajaxurl, {
+			action: 'loom_silo_check',
+			nonce: loom_ajax.nonce
+		}, function(res) {
+			btn.prop('disabled', false).text('🏗️ Sprawdź silo');
+			if (!res.success) { $result.html('<p style="color:var(--bad)">Błąd</p>').show(); return; }
+
+			var d = res.data, html = '';
+			if (!d.clusters.length) {
+				html = '<div style="padding:8px;color:var(--muted)">Brak zdefiniowanych klastrów. Uruchom skan + graf.</div>';
+			} else {
+				html += '<div style="font-weight:700;margin-bottom:6px">Integralność silo: ' + (d.issues === 0 ? '<span style="color:#16a34a">✅ OK</span>' : '<span style="color:#dc2626">⚠️ ' + d.issues + ' brakujących linków</span>') + '</div>';
+				d.clusters.forEach(function(cl) {
+					var ok = cl.issues.length === 0;
+					html += '<div style="padding:6px 10px;background:' + (ok ? '#dcfce7' : '#fef2f2') + ';border-radius:8px;margin-bottom:4px">';
+					html += '<strong>' + cl.cluster_name + '</strong> (pillar: ' + cl.pillar + ', ' + cl.members + ' artykułów)';
+					if (ok) { html += ' ✅'; }
+					else {
+						cl.issues.forEach(function(iss) {
+							html += '<div style="font-size:10px;margin-top:2px;color:#dc2626">';
+							html += iss.type === 'pillar_missing' ? '↗ Pillar nie linkuje do: ' + iss.to : '↙ Brak linka do pillara z: ' + iss.from;
+							html += '</div>';
+						});
+					}
+					html += '</div>';
+				});
+			}
+			$result.html(html).show();
+		});
+	});
+
+	/* =======================================================================
+	   ORPHAN TREND CHART (v2.4)
+	   ======================================================================= */
+	var $trendChart = $('#loom-trend-chart');
+	if ($trendChart.length) {
+		var trendData = $trendChart.data('trend') || [];
+		if (trendData.length >= 2) {
+			var W = $trendChart.width() || 600, H = 140;
+			var m = {t:10,r:20,b:24,l:30};
+			var iW = W-m.l-m.r, iH = H-m.t-m.b;
+			var maxV = 1;
+			trendData.forEach(function(d) { if (d.orphans > maxV) maxV = d.orphans; if (d.near > maxV) maxV = d.near; });
+			maxV = Math.max(maxV, 3);
+			var xs = function(i) { return m.l + (i / (trendData.length - 1)) * iW; };
+			var ys = function(v) { return H - m.b - (v / maxV) * iH; };
+
+			var svg = '<svg width="'+W+'" height="'+H+'">';
+			// Grid
+			for (var g = 0; g <= maxV; g += Math.max(1, Math.ceil(maxV/4))) {
+				svg += '<line x1="'+m.l+'" y1="'+ys(g)+'" x2="'+(W-m.r)+'" y2="'+ys(g)+'" stroke="#f1f5f9"/>';
+				svg += '<text x="'+(m.l-6)+'" y="'+(ys(g)+3)+'" font-size="9" fill="#94a3b8" text-anchor="end">'+g+'</text>';
+			}
+
+			// Near-orphan line (yellow)
+			var nearPath = 'M';
+			trendData.forEach(function(d,i) { nearPath += (i?'L':'') + xs(i) + ',' + ys(d.near); });
+			svg += '<path d="'+nearPath+'" fill="none" stroke="#f59e0b" stroke-width="2" opacity="0.6"/>';
+
+			// Orphan line (red)
+			var orphPath = 'M';
+			trendData.forEach(function(d,i) { orphPath += (i?'L':'') + xs(i) + ',' + ys(d.orphans); });
+			svg += '<path d="'+orphPath+'" fill="none" stroke="#dc2626" stroke-width="2.5"/>';
+
+			// Dots + labels
+			trendData.forEach(function(d,i) {
+				svg += '<circle cx="'+xs(i)+'" cy="'+ys(d.orphans)+'" r="3" fill="#dc2626"/>';
+				svg += '<circle cx="'+xs(i)+'" cy="'+ys(d.near)+'" r="2.5" fill="#f59e0b"/>';
+				if (i === 0 || i === trendData.length-1 || i % Math.max(1,Math.floor(trendData.length/5)) === 0) {
+					svg += '<text x="'+xs(i)+'" y="'+(H-6)+'" font-size="8" fill="#94a3b8" text-anchor="middle">'+d.date.substring(5)+'</text>';
+				}
+			});
+
+			// End values
+			var last = trendData[trendData.length-1];
+			svg += '<text x="'+(W-m.r+4)+'" y="'+(ys(last.orphans)+3)+'" font-size="10" fill="#dc2626" font-weight="700">'+last.orphans+'</text>';
+			svg += '<text x="'+(W-m.r+4)+'" y="'+(ys(last.near)+3)+'" font-size="10" fill="#f59e0b" font-weight="700">'+last.near+'</text>';
+
+			svg += '</svg>';
+			svg += '<div style="display:flex;gap:14px;font-size:9px;color:#94a3b8;margin-top:2px"><span style="color:#dc2626">● Orphany</span><span style="color:#f59e0b">● Near-orphany</span></div>';
+			$trendChart.html(svg);
+		}
+	}
+
+	/* =======================================================================
 	   BROKEN LINKS
 	   ======================================================================= */
 	var $brokenList = $('#loom-broken-list');
@@ -1603,7 +1887,11 @@
 		// Include other settings if present.
 		$('.loom-settings-input, .loom-settings-select').each(function() {
 			var name = $(this).attr('name');
-			if (name) data[name.replace('loom_', '')] = $(this).val();
+			if (name) {
+				var val = $(this).val();
+				if ($(this).attr('type') === 'number') val = String(val).replace(',', '.');
+				data[name.replace('loom_', '')] = val;
+			}
 		});
 		$.post(loom_ajax.ajaxurl, data, function(res) {
 			if (res.success) {

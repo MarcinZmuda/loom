@@ -16,6 +16,7 @@ class Loom_Activator {
 
 	public static function deactivate() {
 		delete_transient( 'loom_activation_redirect' );
+		wp_clear_scheduled_hook( 'loom_weekly_rescan' );
 	}
 
 	public static function maybe_upgrade() {
@@ -53,6 +54,13 @@ class Loom_Activator {
 				$wpdb->query( "ALTER TABLE {$lnk} ADD COLUMN target_url varchar(500) NOT NULL DEFAULT '' AFTER target_post_id" );
 				$wpdb->query( "ALTER TABLE {$lnk} ADD KEY is_broken (is_broken)" );
 			}
+
+			// Migration: add is_structural column if missing (v2.4+).
+			$idx = $wpdb->prefix . 'loom_index';
+			$col2 = $wpdb->get_results( "SHOW COLUMNS FROM {$idx} LIKE 'is_structural'" );
+			if ( empty( $col2 ) ) {
+				$wpdb->query( "ALTER TABLE {$idx} ADD COLUMN is_structural tinyint(1) DEFAULT 0 AFTER is_orphan" );
+			}
 		}
 	}
 
@@ -72,6 +80,7 @@ class Loom_Activator {
 			incoming_links_count int(11) DEFAULT 0,
 			outgoing_links_count int(11) DEFAULT 0,
 			is_orphan tinyint(1) DEFAULT 0,
+			is_structural tinyint(1) DEFAULT 0,
 			click_depth tinyint(3) unsigned DEFAULT NULL,
 			cluster_id bigint(20) unsigned DEFAULT NULL,
 			site_tier tinyint(3) unsigned DEFAULT NULL,

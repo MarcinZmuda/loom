@@ -406,7 +406,7 @@ msgid "Ponowne skanowanie odświeża indeks treści i linków. Uruchom po dodani
 msgstr "Re-scanning refreshes the content and link index. Run after adding new posts or structural changes."
 
 msgid "Posty z similarity poniżej tego progu nie będą proponowane jako targety. Domyślnie 0.35."
-msgstr "Posts with similarity below this threshold won't be suggested as targets. Default 0.35."
+msgstr "Posts with similarity below this threshold won't be suggested as targets. Default 0.35. Lower to 0.15-0.25 if too few suggestions."
 
 msgid "Potencjalny zwrot z linkowania: Wysoki = dużo impressions, link może dać duży wzrost ruchu."
 msgstr "Potential linking ROI: High = many impressions, a link could significantly increase traffic."
@@ -600,7 +600,7 @@ msgstr "Use GPT (layer 3, ~$0.001/post)"
 msgid "W"
 msgstr "W"
 
-msgid "Wagi composite score (9 wymiarów)"
+msgid "Wagi composite score (11 wymiarów)"
 msgstr "Composite score weights (11 dimensions)"
 
 msgid "Wagi scoringu (zaawansowane)"
@@ -755,3 +755,84 @@ msgstr "Needs fixing"
 
 msgid "Ładowanie..."
 msgstr "Loading..."
+
+msgid "(usunięty)"
+msgstr "(removed)"
+
+msgid "Brak embeddingu. Wygeneruj embeddingi w ustawieniach."
+msgstr "No embedding. Generate embeddings in settings."
+
+msgid "Nieprawidłowy embedding."
+msgstr "Invalid embedding."
+
+msgid "Oznacz jako stronę strukturalną (menu/footer) — wykluczona z orphan metryk"
+msgstr "Mark as structural page (menu/footer) — excluded from orphan metrics"
+
+msgid "Reverse Rescue — znajdź artykuły które mogą linkować do tej strony"
+msgstr "Reverse Rescue — find articles that can link to this page"
+
+msgid "Sprawdź czy pillary linkują do wszystkich artykułów w klastrze i odwrotnie."
+msgstr "Check if pillars link to all cluster articles and vice versa."
+
+msgid "Sprawdź kanibalizację, duplikaty linków, overlinked pages, integralność silo."
+msgstr "Check cannibalization, duplicate links, overlinked pages, silo integrity."
+
+msgid "Strony nawigacyjne (menu, footer) — wykluczone z metryk orphanów."
+msgstr "Navigation pages (menu, footer) — excluded from orphan metrics."
+
+msgid "Strony nawigacyjne wykluczone z metryk orphanów. Linkowane z menu/footera."
+msgstr "Navigation pages excluded from orphan metrics. Linked from menu/footer."
+
+msgid "Strony z 1-2 linkami IN — za słabe wsparcie. Potrzebują wzmocnienia."
+msgstr "Pages with 1-2 incoming links — too weak. Need reinforcement."
+
+msgid "Strony z ponad 20 linkami wychodzącymi — equity się rozrzedza."
+msgstr "Pages with over 20 outgoing links — equity gets diluted."
+
+msgid "Strony z ponad 20 linkami wychodzącymi. Zbyt wiele linków rozrzedza equity."
+msgstr "Pages with over 20 outgoing links. Too many links dilute equity."
+
+msgid "Strukturalne"
+msgstr "Structural"
+
+msgid "Nieprawidłowa akcja."
+msgstr "Invalid action."
+
+msgid "Nieprawidłowy ID linku."
+msgstr "Invalid link ID."
+
+msgid "Link nie znaleziony."
+msgstr "Link not found."
+
+msgid "Nie znaleziono URL-a w treści posta."
+msgstr "URL not found in post content."
+
+msgid "Nie znaleziono linku w treści posta. Możliwe, że został już naprawiony."
+msgstr "Link not found in post content. It may have already been fixed."
+
+msgid "Post nie istnieje."
+msgstr "Post does not exist."
+
+msgid "Link „%s\" usunięty z posta."
+msgstr "Link \"%s\" removed from post."
+
+msgid "URL zmieniony na: %s"
+msgstr "URL changed to: %s"
+
+msgid "„%s\" nie ma linków przychodzących (orphan). Otwórz LOOM aby wygenerować sugestie linkowania."
+msgstr "\"%s\" has no incoming links (orphan). Open LOOM to generate linking suggestions."
+
+msgid "Brak linków wewnętrznych. Kliknij \xe2\x80\x9ePodlinkuj\xe2\x80\x9d."
+msgstr "No internal links. Click \"Suggest Links\"."
+
+msgid "Link \xe2\x80\x9e%s\xe2\x80\x9d usunięty z posta."
+msgstr "Link \"%s\" removed from post."
+
+msgid "Treść posta została zmieniona. Kliknij \xe2\x80\x9ePodlinkuj\xe2\x80\x9d ponownie."
+msgstr "Post content has changed. Click \"Suggest Links\" again."
+
+msgid "Łączny koszt wywołań OpenAI API (embeddingi + sugestie GPT). Typowy koszt: ~$0.002 za jedno \xe2\x80\x9ePodlinkuj\xe2\x80\x9d."
+msgstr "Total cost of OpenAI API calls (embeddings + GPT suggestions). Typical cost: ~$0.002 per \"Suggest Links\"."
+
+msgid "\xe2\x80\x9e%s\xe2\x80\x9d nie ma linków przychodzących (orphan). Otwórz LOOM aby wygenerować sugestie linkowania."
+msgstr "\"%s\" has no incoming links (orphan). Open LOOM to generate linking suggestions."

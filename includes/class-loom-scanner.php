@@ -52,6 +52,7 @@ class Loom_Scanner {
 			Loom_Keywords::build_df_cache();
 			Loom_Site_Analysis::calculate_click_depths();
 			Loom_Graph::analyze();
+			Loom_DB::log_orphan_trend();
 			update_option( 'loom_scan_completed', true );
 		}
 
@@ -132,6 +133,12 @@ class Loom_Scanner {
 			$link_host = $parsed['host'] ?? '';
 			if ( ! empty( $link_host ) && $link_host !== $home_host ) continue;
 
+			// Skip non-content URLs (prevents false broken links).
+			$path = $parsed['path'] ?? '';
+			if ( preg_match( '#^/(wp-admin|wp-login|wp-content|wp-includes|wp-json|feed|comments|xmlrpc)(/|$|\?)#i', $path ) ) continue;
+			if ( preg_match( '#\.(css|js|jpg|jpeg|png|gif|svg|webp|pdf|xml|json|ico|woff|woff2|ttf|eot)(\?|$)#i', $path ) ) continue;
+			if ( $href === '#' || strpos( $href, '#' ) === 0 || strpos( $href, 'javascript:' ) === 0 || strpos( $href, 'mailto:' ) === 0 || strpos( $href, 'tel:' ) === 0 ) continue;
+
 			// Resolve relative URLs.
 			if ( empty( $link_host ) && isset( $parsed['path'] ) ) {
 				$href = home_url( $parsed['path'] );
@@ -149,7 +156,62 @@ class Loom_Scanner {
 			// Check if broken.
 			$is_broken = 0;
 			if ( $target_id === 0 ) {
-				$is_broken = 1;
+				// Before marking broken, check if it's a valid WP URL that isn't a post/page.
+				$is_known_url = false;
+				$url_path = trim( wp_parse_url( $href, PHP_URL_PATH ) ?: '', '/' );
+
+				if ( ! empty( $url_path ) ) {
+					// 1. Category by slug (handles clean URLs like /technologie).
+					if ( get_category_by_slug( $url_path ) ) $is_known_url = true;
+					if ( ! $is_known_url && get_category_by_slug( basename( $url_path ) ) ) $is_known_url = true;
+
+					// 2. Tag by slug.
+					if ( ! $is_known_url && get_term_by( 'slug', $url_path, 'post_tag' ) ) $is_known_url = true;
+					if ( ! $is_known_url && get_term_by( 'slug', basename( $url_path ), 'post_tag' ) ) $is_known_url = true;
+
+					// 3. Custom taxonomies (all public).
+					if ( ! $is_known_url ) {
+						$slug = basename( $url_path );
+						foreach ( get_taxonomies( array( 'public' => true ), 'names' ) as $tax ) {
+							if ( get_term_by( 'slug', $slug, $tax ) ) { $is_known_url = true; break; }
+						}
+					}
+
+					// 4. Nested page slug.
+					if ( ! $is_known_url && get_page_by_path( $url_path ) ) $is_known_url = true;
+
+					// 5. Author archive (/author/slug or custom author base).
+					if ( ! $is_known_url ) {
+						$parts = explode( '/', $url_path );
+						if ( count( $parts ) >= 2 && $parts[0] === 'author' ) {
+							if ( get_user_by( 'slug', $parts[1] ) ) $is_known_url = true;
+						}
+						// Also check if the full path is an author slug (custom author base).
+						if ( ! $is_known_url && get_user_by( 'slug', basename( $url_path ) ) ) $is_known_url = true;
+					}
+
+					// 6. Post type archive (e.g. /portfolio, /events).
+					if ( ! $is_known_url ) {
+						foreach ( get_post_types( array( 'public' => true, 'has_archive' => true ), 'objects' ) as $pt ) {
+							$archive_slug = $pt->has_archive === true ? $pt->rewrite['slug'] ?? $pt->name : $pt->has_archive;
+							if ( $archive_slug && trim( $archive_slug, '/' ) === $url_path ) { $is_known_url = true; break; }
+						}
+					}
+
+					// 7. Homepage / blog page.
+					if ( ! $is_known_url && ( $url_path === '' || $href === home_url( '/' ) || $href === home_url() ) ) {
+						$is_known_url = true;
+					}
+
+					// 8. Date archives (/2024/, /2024/01/).
+					if ( ! $is_known_url && preg_match( '#^\d{4}(/\d{2})?(/\d{2})?$#', $url_path ) ) {
+						$is_known_url = true;
+					}
+				}
+
+				if ( ! $is_known_url ) {
+					$is_broken = 1;
+				}
 			} else {
 				$status = get_post_status( $target_id );
 				if ( $status !== 'publish' ) {
@@ -194,8 +256,35 @@ class Loom_Scanner {
 		if ( $post->post_status !== 'publish' ) return;
 
 		$settings = Loom_DB::get_settings();
-		if ( empty( $settings['rescan_on_save'] ) ) return;
 		if ( ! in_array( $post->post_type, $settings['post_types'], true ) ) return;
+
+		// v2.4: Publish-time orphan alert for new posts (or posts with 0 IN).
+		if ( ! $update || ! get_post_meta( $post_id, '_loom_content_hash', true ) ) {
+			global $wpdb;
+			$idx = Loom_DB::index_table();
+			$in  = (int) $wpdb->get_var( $wpdb->prepare(
+				"SELECT incoming_links_count FROM {$idx} WHERE post_id = %d", $post_id
+			) );
+			if ( $in === 0 ) {
+				set_transient( 'loom_orphan_alert_' . $post_id, true, 60 );
+				add_action( 'admin_notices', function() use ( $post_id ) {
+					if ( get_transient( 'loom_orphan_alert_' . $post_id ) ) {
+						$title = get_the_title( $post_id );
+						echo '<div class="notice notice-warning is-dismissible"><p>';
+						echo '<strong>🕸️ LOOM:</strong> ';
+						printf(
+							/* translators: %s: post title */
+							esc_html__( '„%s" nie ma linków przychodzących (orphan). Otwórz LOOM aby wygenerować sugestie linkowania.', 'loom' ),
+							esc_html( $title )
+						);
+						echo '</p></div>';
+						delete_transient( 'loom_orphan_alert_' . $post_id );
+					}
+				} );
+			}
+		}
+
+		if ( empty( $settings['rescan_on_save'] ) ) return;
 
 		$old_hash = get_post_meta( $post_id, '_loom_content_hash', true );
 		$new_hash = md5( $post->post_content );
@@ -217,5 +306,19 @@ class Loom_Scanner {
 	public static function on_delete_post( $post_id ) {
 		Loom_DB::delete_index( $post_id );
 		Loom_DB::delete_links_involving_post( $post_id );
+	}
+
+	/**
+	 * v2.4: WP Cron weekly rescan  -  recalc counters, graph, orphan trend.
+	 */
+	public static function cron_weekly_rescan() {
+		if ( ! get_option( 'loom_scan_completed' ) ) return;
+
+		Loom_DB::recalc_counters();
+		Loom_Graph::analyze();
+		Loom_Site_Analysis::calculate_click_depths();
+		Loom_DB::log_orphan_trend();
+
+		Loom_DB::log( 'cron_rescan', null, array( 'type' => 'weekly' ) );
 	}
 }
