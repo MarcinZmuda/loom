@@ -16,7 +16,7 @@ class Loom_Dashboard {
 		$nodes_raw = $wpdb->get_results(
 			"SELECT post_id, post_title, post_type, incoming_links_count, outgoing_links_count,
 			        is_orphan, is_structural, site_tier, cluster_id, internal_pagerank, is_dead_end, is_bridge,
-			        is_money_page, is_striking_distance,
+			        is_money_page, is_striking_distance, focus_keywords,
 			        gsc_position, gsc_impressions, gsc_clicks, gsc_ctr, gsc_top_queries
 			 FROM {$idx} ORDER BY incoming_links_count DESC LIMIT 100", ARRAY_A
 		);
@@ -25,6 +25,21 @@ class Loom_Dashboard {
 
 		$nodes = array();
 		foreach ( $nodes_raw as $n ) {
+			// Primary keyword straight from the main SELECT  -  the previous
+			// get_index_row() per node pulled 100 full rows incl. longtext columns.
+			$primary_kw = '';
+			if ( ! empty( $n['focus_keywords'] ) ) {
+				$kws = json_decode( $n['focus_keywords'], true );
+				if ( is_array( $kws ) ) {
+					foreach ( $kws as $kw ) {
+						if ( ( $kw['type'] ?? '' ) === 'primary' ) { $primary_kw = $kw['phrase'] ?? ''; break; }
+					}
+					if ( $primary_kw === '' && ! empty( $kws[0]['phrase'] ) ) {
+						$primary_kw = $kws[0]['phrase'];
+					}
+				}
+			}
+
 			$nodes[] = array(
 				'id' => intval( $n['post_id'] ), 'label' => mb_substr( $n['post_title'], 0, 60 ),
 				'type' => $n['post_type'], 'in' => intval( $n['incoming_links_count'] ),
@@ -39,26 +54,9 @@ class Loom_Dashboard {
 				'gsc_clicks' => intval( $n['gsc_clicks'] ?? 0 ),
 				'gsc_ctr' => floatval( $n['gsc_ctr'] ?? 0 ),
 				'queries' => json_decode( $n['gsc_top_queries'] ?? '[]', true ) ?: array(),
-				'primary_kw' => '',
+				'primary_kw' => $primary_kw,
 			);
 		}
-
-		// Extract primary keyword per node.
-		foreach ( $nodes as &$nd ) {
-			$kw_row = Loom_DB::get_index_row( $nd['id'] );
-			if ( $kw_row && ! empty( $kw_row['focus_keywords'] ) ) {
-				$kws = json_decode( $kw_row['focus_keywords'], true );
-				if ( is_array( $kws ) ) {
-					foreach ( $kws as $kw ) {
-						if ( ( $kw['type'] ?? '' ) === 'primary' ) { $nd['primary_kw'] = $kw['phrase'] ?? ''; break; }
-					}
-					if ( empty( $nd['primary_kw'] ) && ! empty( $kws[0]['phrase'] ) ) {
-						$nd['primary_kw'] = $kws[0]['phrase'];
-					}
-				}
-			}
-		}
-		unset( $nd );
 
 		$ids_str = implode( ',', array_map( 'intval', $node_ids ) );
 		$edges_raw = $wpdb->get_results(
@@ -226,6 +224,7 @@ class Loom_Dashboard {
 				<?php if ( $s['money_deficit'] > 0 ) : ?><button class="loom-action-btn loom-action-yellow" title="<?php esc_attr_e( 'Money pages z deficytem linków — nie osiągnęły celu linkowania. Więcej linków = więcej equity = wyższa pozycja.', 'loom' ); ?>">⭐ <?php esc_html_e( 'Wzmocnij money pages', 'loom' ); ?></button><?php endif; ?>
 				<button class="loom-action-btn" style="background:#f0fdfa;color:#0d9488" id="loom-run-diagnostics" title="<?php esc_attr_e( 'Sprawdź kanibalizację, duplikaty linków, overlinked pages, integralność silo.', 'loom' ); ?>">🩺 Diagnostyka</button>
 				<button class="loom-action-btn" style="background:#f0fdfa;color:#0d9488" id="loom-silo-check" title="<?php esc_attr_e( 'Sprawdź czy pillary linkują do wszystkich artykułów w klastrze i odwrotnie.', 'loom' ); ?>">🏗️ Sprawdź silo</button>
+				<button class="loom-action-btn" style="background:#eff6ff;color:#1d4ed8" id="loom-load-structural" title="<?php esc_attr_e( 'Sugestie strukturalne z analizy grafu: orphany, dead endy, bottlenecki, redystrybucja PageRank.', 'loom' ); ?>">📋 <?php esc_html_e( 'Sugestie strukturalne', 'loom' ); ?></button>
 				<button class="loom-action-btn" style="background:#f1f5f9;color:#374151" id="loom-start-scan" title="<?php esc_attr_e( 'Ponowne skanowanie odświeża indeks treści i linków. Uruchom po dodaniu nowych postów lub zmianach w strukturze.', 'loom' ); ?>">🔄 <?php esc_html_e( 'Przeskanuj ponownie', 'loom' ); ?></button>
 				</div>
 				<div id="loom-scan-progress" style="display:none;margin-top:8px">
@@ -234,6 +233,7 @@ class Loom_Dashboard {
 				</div>
 				<div id="loom-diagnostics-result" style="display:none;margin-top:10px;font-size:11px"></div>
 				<div id="loom-silo-result" style="display:none;margin-top:10px;font-size:11px"></div>
+				<div id="loom-structural-suggestions" style="margin-top:10px;font-size:11px"></div>
 			</div></div>
 		</div>
 
@@ -423,7 +423,17 @@ class Loom_Dashboard {
 		</div>
 
 		<?php // ═══ POSTS TAB ═══
-		elseif ( $tab === 'posts' ) : ?>
+		elseif ( $tab === 'posts' ) :
+			$can_toggle = current_user_can( 'edit_others_posts' );
+			// Prefetch source IDs with broken links (was: one query per table row).
+			$broken_sources = array();
+			if ( $filter === 'broken' ) {
+				global $wpdb;
+				$broken_sources = array_map( 'intval', $wpdb->get_col(
+					'SELECT DISTINCT source_post_id FROM ' . Loom_DB::links_table() . ' WHERE is_broken = 1'
+				) );
+			}
+		?>
 		<div class="loom-card">
 			<div class="loom-filters">
 				<?php
@@ -466,14 +476,7 @@ class Loom_Dashboard {
 				if ( $filter === 'striking' && empty( $row['is_striking_distance'] ) ) continue;
 				if ( $filter === 'deadends' && empty( $row['is_dead_end'] ) ) continue;
 				if ( $filter === 'overlinked' && intval( $row['outgoing_links_count'] ) <= 20 ) continue;
-				if ( $filter === 'broken' ) {
-					global $wpdb;
-					$has_broken = (int) $wpdb->get_var( $wpdb->prepare(
-						"SELECT COUNT(*) FROM " . Loom_DB::links_table() . " WHERE source_post_id = %d AND is_broken = 1",
-						$row['post_id']
-					) );
-					if ( ! $has_broken ) continue;
-				}
+				if ( $filter === 'broken' && ! in_array( intval( $row['post_id'] ), $broken_sources, true ) ) continue;
 
 				$in      = intval( $row['incoming_links_count'] );
 				$is_mp   = ! empty( $row['is_money_page'] );
@@ -488,8 +491,12 @@ class Loom_Dashboard {
 			?>
 			<tr<?php echo ! empty( $row['is_structural'] ) ? ' style="opacity:.6"' : ''; ?>>
 				<td>
+					<?php if ( $can_toggle ) : // Toggles require edit_others_posts server-side  -  don't render dead buttons. ?>
 					<button class="loom-structural-toggle <?php echo ! empty( $row['is_structural'] ) ? 'active' : ''; ?>" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>" data-is-structural="<?php echo ! empty( $row['is_structural'] ) ? '1' : '0'; ?>" title="<?php esc_attr_e( 'Oznacz jako stronę strukturalną (menu/footer) — wykluczona z orphan metryk', 'loom' ); ?>" style="background:none;border:1px solid <?php echo ! empty( $row['is_structural'] ) ? 'var(--teal)' : '#e5e7eb'; ?>;border-radius:5px;cursor:pointer;font-size:11px;padding:1px 4px"><?php echo ! empty( $row['is_structural'] ) ? '🏗️' : '·'; ?></button>
 					<button class="loom-money-toggle <?php echo $is_mp ? 'active' : ''; ?>" data-post-id="<?php echo esc_attr( $row['post_id'] ); ?>" data-is-money="<?php echo $is_mp ? '1' : '0'; ?>"><?php echo $is_mp ? '⭐' : '☆'; ?></button>
+					<?php else : ?>
+					<span style="font-size:11px"><?php echo ! empty( $row['is_structural'] ) ? '🏗️' : ''; echo $is_mp ? '⭐' : ''; ?></span>
+					<?php endif; ?>
 					<a href="<?php echo esc_url( get_edit_post_link( $row['post_id'] ) ); ?>" class="loom-link"><?php echo esc_html( mb_substr( $row['post_title'], 0, 45 ) ); ?></a>
 					<span class="loom-muted" style="font-size:10px;margin-left:4px"><?php echo esc_html( $row['post_type'] ); ?></span>
 				</td>

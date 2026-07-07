@@ -52,8 +52,7 @@ class Loom_Keywords {
 		}
 
 		// Layer 2: TF-IDF (needs >= 5 posts in index).
-		$stats = Loom_DB::get_dashboard_stats();
-		if ( $stats['total_posts'] >= 5 ) {
+		if ( self::indexed_posts_count() >= 5 ) {
 			$tfidf  = self::tfidf( $post_id, 5 );
 			$max_tf = ! empty( $tfidf ) ? max( $tfidf ) : 1;
 			foreach ( $tfidf as $phrase => $score ) {
@@ -143,7 +142,7 @@ class Loom_Keywords {
 		$scored = array();
 		foreach ( $ngrams as $phrase ) {
 			$score = 3; // Base: in title.
-			$wc = str_word_count( $phrase );
+			$wc = self::count_words( $phrase );
 			if ( $wc === 2 ) $score += 2;
 			if ( $wc === 3 ) $score += 1;
 			if ( mb_strpos( $headings_text, $phrase ) !== false ) $score += 3;
@@ -245,6 +244,7 @@ class Loom_Keywords {
 			$batch = $wpdb->get_col( $wpdb->prepare(
 				"SELECT clean_text FROM {$table}
 				 WHERE clean_text IS NOT NULL AND clean_text != ''
+				 ORDER BY id ASC
 				 LIMIT %d OFFSET %d",
 				$batch_size, $offset
 			) );
@@ -376,6 +376,40 @@ class Loom_Keywords {
 	/* ================================================================
 	   HELPERS
 	   ================================================================ */
+
+	/** @var int|null Per-request cache for indexed posts count. */
+	private static $posts_count_cache = null;
+
+	/**
+	 * Cheap indexed-posts count (replaces full get_dashboard_stats() call).
+	 *
+	 * @return int
+	 */
+	public static function indexed_posts_count() {
+		if ( self::$posts_count_cache === null ) {
+			global $wpdb;
+			self::$posts_count_cache = (int) $wpdb->get_var(
+				'SELECT COUNT(*) FROM ' . Loom_DB::index_table()
+			);
+		}
+		return self::$posts_count_cache;
+	}
+
+	/**
+	 * Multibyte-safe word count.
+	 *
+	 * str_word_count() is not UTF-8 aware  -  Polish/German diacritics split
+	 * words and inflate counts. Counts sequences of letters/digits instead.
+	 *
+	 * @param string $text Input text.
+	 * @return int
+	 */
+	public static function count_words( $text ) {
+		if ( ! is_string( $text ) || $text === '' ) {
+			return 0;
+		}
+		return (int) preg_match_all( '/[\p{L}\p{N}]+/u', $text );
+	}
 
 	/**
 	 * Tokenize text: lowercase, remove non-alpha, filter stop words.

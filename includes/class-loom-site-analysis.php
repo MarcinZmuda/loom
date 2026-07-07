@@ -10,6 +10,16 @@ class Loom_Site_Analysis {
 		$homepage_id = intval( get_option( 'page_on_front', 0 ) );
 		$wpdb->query( "UPDATE {$idx} SET click_depth = NULL" );
 		if ( ! $homepage_id ) $homepage_id = intval( get_option( 'page_for_posts', 0 ) );
+
+		// Fallback for "latest posts" homepages (both options = 0): without a seed
+		// every page ends up NULL depth and the composite depth dimension collapses
+		// (everything gets the max "UNREACHABLE" boost). Seed from the strongest hub.
+		if ( ! $homepage_id ) {
+			$homepage_id = intval( $wpdb->get_var(
+				"SELECT post_id FROM {$idx} ORDER BY incoming_links_count DESC, internal_pagerank DESC LIMIT 1"
+			) );
+		}
+
 		if ( $homepage_id ) $wpdb->update( $idx, array( 'click_depth' => 0 ), array( 'post_id' => $homepage_id ) );
 
 		for ( $depth = 0; $depth < 10; $depth++ ) {
@@ -49,7 +59,14 @@ class Loom_Site_Analysis {
 		), ARRAY_A );
 	}
 
+	/** @var array<int, array> Per-request cache. */
+	private static $anchor_dist_cache = array();
+
 	public static function anchor_distribution( $target_post_id ) {
+		$target_post_id = intval( $target_post_id );
+		if ( isset( self::$anchor_dist_cache[ $target_post_id ] ) ) {
+			return self::$anchor_dist_cache[ $target_post_id ];
+		}
 		global $wpdb;
 		$anchors = $wpdb->get_results( $wpdb->prepare(
 			"SELECT anchor_text, COUNT(*) AS cnt
@@ -64,7 +81,9 @@ class Loom_Site_Analysis {
 			$top_pct = round( ( intval( $anchors[0]['cnt'] ) / $total ) * 100 );
 			if ( $top_pct > 50 ) $warnings[] = 'dominant';
 		}
-		return array( 'total' => $total, 'anchors' => $anchors, 'warnings' => $warnings );
+		$result = array( 'total' => $total, 'anchors' => $anchors, 'warnings' => $warnings );
+		self::$anchor_dist_cache[ $target_post_id ] = $result;
+		return $result;
 	}
 
 	public static function format_for_prompt( $target_post_id ) {
@@ -72,11 +91,17 @@ class Loom_Site_Analysis {
 		$target_post_id = intval( $target_post_id );
 		if ( $target_post_id <= 0 ) return $out;
 
-		$row = Loom_DB::get_index_row( $target_post_id );
+		// Only focus_keywords is needed  -  get_index_row() would pull the full row
+		// including clean_text + embedding longtext (~15KB) per target.
+		global $wpdb;
+		$focus_keywords = $wpdb->get_var( $wpdb->prepare(
+			'SELECT focus_keywords FROM ' . Loom_DB::index_table() . ' WHERE post_id = %d',
+			$target_post_id
+		) );
 
 		// Keywords.
-		if ( ! empty( $row['focus_keywords'] ) ) {
-			$kws = json_decode( $row['focus_keywords'], true );
+		if ( ! empty( $focus_keywords ) ) {
+			$kws = json_decode( $focus_keywords, true );
 			if ( is_array( $kws ) && ! empty( $kws ) ) {
 				$labels = array();
 				foreach ( $kws as $k ) {
@@ -145,7 +170,13 @@ class Loom_Site_Analysis {
 		if ( ! current_user_can( 'edit_posts' ) ) wp_send_json_error( 'Forbidden', 403 );
 		$post_id   = absint( $_POST['post_id'] ?? 0 );
 		$target_id = absint( $_POST['target_id'] ?? 0 );
-		$anchor    = sanitize_text_field( $_POST['anchor_text'] ?? '' );
+		$anchor    = sanitize_text_field( wp_unslash( $_POST['anchor_text'] ?? '' ) );
+
+		// Fallback: resolve target from URL when the UI couldn't provide an ID.
+		if ( ! $target_id && ! empty( $_POST['target_url'] ) ) {
+			$target_id = url_to_postid( esc_url_raw( wp_unslash( $_POST['target_url'] ) ) );
+		}
+
 		if ( $post_id && $target_id ) {
 			self::reject_suggestion( $post_id, $target_id, $anchor );
 		}

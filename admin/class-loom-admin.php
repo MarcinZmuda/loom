@@ -83,12 +83,40 @@ class Loom_Admin {
 		$settings = Loom_DB::get_settings();
 		if ( empty( $settings['admin_notices'] ) ) return;
 
-		// Only show once per session.
-		$dismissed = get_user_meta( get_current_user_id(), '_loom_notice_dismissed', true );
-		if ( $dismissed === date( 'Y-m-d' ) ) return;
+		// v2.4: publish-time orphan alerts queued by Loom_Scanner::on_save_post
+		// (Gutenberg saves via REST  -  a notice registered during save never shows).
+		$queue = get_transient( 'loom_orphan_alerts' );
+		if ( ! empty( $queue ) && is_array( $queue ) ) {
+			delete_transient( 'loom_orphan_alerts' );
+			foreach ( array_slice( $queue, 0, 3 ) as $pid ) {
+				$title = get_the_title( $pid );
+				if ( ! $title ) continue;
+				echo '<div class="notice notice-warning is-dismissible"><p>';
+				echo '<strong>🕸️ LOOM:</strong> ';
+				printf(
+					/* translators: %s: post title */
+					esc_html__( '„%s" nie ma linków przychodzących (orphan). Otwórz LOOM aby wygenerować sugestie linkowania.', 'loom' ),
+					esc_html( $title )
+				);
+				echo '</p></div>';
+			}
+		}
 
-		$stats = Loom_DB::get_dashboard_stats();
-		if ( $stats['orphans'] > 0 ) {
+		// Only show the daily summary once per day.
+		$dismissed = get_user_meta( get_current_user_id(), '_loom_notice_dismissed', true );
+		if ( $dismissed === current_time( 'Y-m-d' ) ) return;
+
+		// Cheap cached count  -  get_dashboard_stats() ran heavy aggregations
+		// on EVERY admin page load.
+		$orphans = get_transient( 'loom_orphan_notice_count' );
+		if ( false === $orphans ) {
+			global $wpdb;
+			$orphans = (int) $wpdb->get_var( 'SELECT SUM(is_orphan) FROM ' . Loom_DB::index_table() );
+			set_transient( 'loom_orphan_notice_count', $orphans, 10 * MINUTE_IN_SECONDS );
+		}
+
+		if ( $orphans > 0 ) {
+			$stats = array( 'orphans' => (int) $orphans );
 			echo '<div class="notice notice-warning is-dismissible" id="loom-orphan-notice">';
 			echo '<p><strong>LOOM:</strong> ';
 			printf(
@@ -107,6 +135,9 @@ class Loom_Admin {
 // Dismiss notice AJAX.
 add_action( 'wp_ajax_loom_dismiss_notice', function () {
 	check_ajax_referer( 'loom_nonce', 'nonce' );
-	update_user_meta( get_current_user_id(), '_loom_notice_dismissed', date( 'Y-m-d' ) );
+	if ( ! current_user_can( 'edit_posts' ) ) {
+		wp_send_json_error( 'Forbidden', 403 );
+	}
+	update_user_meta( get_current_user_id(), '_loom_notice_dismissed', current_time( 'Y-m-d' ) );
 	wp_send_json_success();
 } );

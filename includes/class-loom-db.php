@@ -323,7 +323,14 @@ class Loom_DB {
 
 	/* ── Anchor Distribution per target ────────────── */
 
+	/** @var array<int, array> Per-request cache: target_post_id => distribution. */
+	private static $anchor_dist_cache = array();
+
 	public static function get_anchor_distribution( $target_post_id ) {
+		$target_post_id = intval( $target_post_id );
+		if ( isset( self::$anchor_dist_cache[ $target_post_id ] ) ) {
+			return self::$anchor_dist_cache[ $target_post_id ];
+		}
 		global $wpdb;
 		$table = self::links_table();
 		$anchors = $wpdb->get_results( $wpdb->prepare(
@@ -344,6 +351,7 @@ class Loom_DB {
 				'percent' => $total > 0 ? round( ( intval( $a['cnt'] ) / $total ) * 100 ) : 0,
 			);
 		}
+		self::$anchor_dist_cache[ $target_post_id ] = $result;
 		return $result;
 	}
 
@@ -364,7 +372,8 @@ class Loom_DB {
 	 */
 	public static function ajax_set_money_page() {
 		check_ajax_referer( 'loom_nonce', 'nonce' );
-		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Forbidden', 403 );
+		// Editors and up  -  the dashboard toggles are rendered for the same capability.
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_send_json_error( __( 'Brak uprawnień.', 'loom' ), 403 );
 
 		$post_id  = absint( wp_unslash( $_POST['post_id'] ?? 0 ) );
 		$is_money = absint( wp_unslash( $_POST['is_money'] ?? 0 ) );
@@ -456,8 +465,9 @@ class Loom_DB {
 	   =================================================================== */
 	public static function ajax_set_structural() {
 		check_ajax_referer( 'loom_nonce', 'nonce' );
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( 'Brak uprawnień.', 'loom' ) );
+		// Editors and up  -  the dashboard toggles are rendered for the same capability.
+		if ( ! current_user_can( 'edit_others_posts' ) ) {
+			wp_send_json_error( __( 'Brak uprawnień.', 'loom' ), 403 );
 		}
 
 		$post_id      = absint( $_POST['post_id'] ?? 0 );
@@ -471,7 +481,7 @@ class Loom_DB {
 		$idx = self::index_table();
 		$wpdb->update( $idx, array(
 			'is_structural' => $is_structural,
-			'is_orphan'     => ( $is_structural ) ? 0 : null, // Will be recalculated.
+			'is_orphan'     => 0, // Recalculated below.
 		), array( 'post_id' => $post_id ) );
 
 		// Recalculate orphan status properly.
@@ -509,7 +519,7 @@ class Loom_DB {
 	   =================================================================== */
 	public static function get_orphan_trend( $limit = 20 ) {
 		global $wpdb;
-		$log = $wpdb->prefix . 'loom_logs';
+		$log = self::log_table();
 		return $wpdb->get_results( $wpdb->prepare(
 			"SELECT created_at, details FROM {$log}
 			 WHERE action = 'orphan_trend'

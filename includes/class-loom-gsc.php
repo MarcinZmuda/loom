@@ -243,8 +243,15 @@ class Loom_GSC {
 		$end_date   = gmdate( 'Y-m-d', strtotime( '-3 days' ) );
 		$start_date = gmdate( 'Y-m-d', strtotime( '-31 days' ) );
 		$result_map = array();
+		$started_at = time();
 
 		foreach ( $page_urls as $url ) {
+			// Time guard: sequential per-page requests can exceed PHP max_execution_time.
+			// Stop with partial results instead of dying mid-request.
+			if ( time() - $started_at > 20 ) {
+				Loom_DB::log( 'gsc_queries_partial', null, array( 'fetched' => count( $result_map ), 'requested' => count( $page_urls ) ) );
+				break;
+			}
 			$body = array(
 				'startDate'             => $start_date,
 				'endDate'               => $end_date,
@@ -520,10 +527,16 @@ class Loom_GSC {
 	   ================================================================ */
 
 	private static function get_site_url() {
-		$url = get_option( 'loom_gsc_site_url', '' );
+		$url = trim( get_option( 'loom_gsc_site_url', '' ) );
 		if ( empty( $url ) ) $url = home_url();
-		// Normalize: trim whitespace, ensure trailing slash, then encode.
-		$url = rtrim( trim( $url ), '/' ) . '/';
+
+		// Domain properties (sc-domain:example.com) must NOT get a trailing slash.
+		if ( strpos( $url, 'sc-domain:' ) === 0 ) {
+			return urlencode( rtrim( $url, '/' ) );
+		}
+
+		// URL-prefix properties: normalize to a single trailing slash, then encode.
+		$url = rtrim( $url, '/' ) . '/';
 		return urlencode( $url );
 	}
 

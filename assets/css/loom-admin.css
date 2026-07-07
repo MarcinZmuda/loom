@@ -2,16 +2,17 @@
    LOOM v2.2 Admin  -  by Marcin Żmuda (marcinzmuda.com)  -  Redesigned Dashboard
    Clean, metric-dense, teal accent, DM Sans
    ========================================================================== */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
+/* No external font import: fonts.googleapis.com in wp-admin leaks admin IPs
+   to Google (GDPR/RODO), violates wordpress.org guidelines (no external
+   assets) and @import blocks rendering. System font stack instead. */
 :root {
   --l: #0d9488; --ld: #0f766e; --ll: #14b8a6; --lbg: #f0fdfa;
   --ok: #10b981; --warn: #f59e0b; --bad: #ef4444; --purple: #a855f7;
   --txt: #1e293b; --muted: #94a3b8; --border: #e5e7eb; --bg: #f9fafb; --card: #fff;
   --shadow: 0 1px 3px rgba(0,0,0,.05); --shadow-lg: 0 4px 12px rgba(0,0,0,.07);
   --radius: 12px; --radius-sm: 8px;
-  --font: 'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
-  --mono: 'JetBrains Mono',ui-monospace,monospace;
+  --font: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --mono: ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
 }
 .loom-wrap { max-width: 1280px; font-family: var(--font); }
 .loom-wrap * { box-sizing: border-box; }

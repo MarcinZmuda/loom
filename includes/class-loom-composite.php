@@ -216,7 +216,10 @@ class Loom_Composite {
 			// Exception: money -> money (cross-sell) is OK.
 		}
 
-		return max( 0.0, min( 1.0, $score ) );
+		// Allow a negative result: clamping at 0 would make the money->non-money
+		// penalty a no-op (a neutral pair already scores 0). The composite sum
+		// handles a negative contribution correctly  -  it just lowers the rank.
+		return max( -1.0, min( 1.0, $score ) );
 	}
 
 	/**
@@ -241,8 +244,11 @@ class Loom_Composite {
 		// 1. Incoming links from same cluster (max 0.4).
 		if ( $cluster_id ) {
 			$cache_key = $tgt_id . '-' . intval( $cluster_id );
-			$cluster_links = self::$cluster_link_cache[ $cache_key ] ?? 0;
-			if ( ! $cluster_links ) {
+			// array_key_exists, NOT `?? 0` + truthiness: a cached 0 (the common
+			// case) must not fall through to a per-target query (N+1).
+			if ( array_key_exists( $cache_key, self::$cluster_link_cache ) ) {
+				$cluster_links = self::$cluster_link_cache[ $cache_key ];
+			} else {
 				// Fallback for direct calls outside rank_targets().
 				global $wpdb;
 				$lnk = Loom_DB::links_table();
@@ -309,6 +315,16 @@ class Loom_Composite {
 			$lnk = Loom_DB::links_table();
 			$idx  = Loom_DB::index_table();
 			$ids_str = implode( ',', $ids );
+
+			// Pre-seed 0 for every target/cluster pair so a "no links from cluster"
+			// result is a cache HIT, not a per-target fallback query in score().
+			foreach ( $similar_targets as $t ) {
+				$cid = intval( $t['cluster_id'] ?? 0 );
+				if ( $cid > 0 ) {
+					self::$cluster_link_cache[ intval( $t['post_id'] ) . '-' . $cid ] = 0;
+				}
+			}
+
 			$rows = $wpdb->get_results(
 				"SELECT l.target_post_id AS pid, i.cluster_id AS cid, COUNT(*) AS cnt
 				 FROM {$lnk} l

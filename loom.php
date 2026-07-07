@@ -3,7 +3,7 @@
  * Plugin Name: LOOM
  * Plugin URI:  https://marcinzmuda.com/loom
  * Description: AI-powered internal linking engine. Semantic embeddings, PageRank, 11-dimensional scoring, GPT-4o-mini, Google Search Console integration.
- * Version:     2.4.0
+ * Version:     2.4.1
  * Author:      Marcin Żmuda
  * Author URI:  https://marcinzmuda.com
  * License:     GPL v2 or later
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'LOOM_VERSION', '2.4.0' );
+define( 'LOOM_VERSION', '2.4.1' );
 define( 'LOOM_DB_VERSION', '2.4' );
 define( 'LOOM_FILE', __FILE__ );
 define( 'LOOM_PATH', plugin_dir_path( __FILE__ ) );

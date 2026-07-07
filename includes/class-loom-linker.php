@@ -55,6 +55,7 @@ class Loom_Linker {
 				Loom_DB::insert_link( array(
 					'source_post_id'      => $post_id,
 					'target_post_id'      => $target_id > 0 ? $target_id : 0,
+					'target_url'          => mb_substr( esc_url_raw( $url ), 0, 500 ),
 					'anchor_text'         => mb_substr( $anchor, 0, 500 ),
 					'link_position'       => $link['surfer_zone'] ?? 'middle',
 					'position_percent'    => intval( $link['position_percent'] ?? 50 ),
@@ -192,6 +193,38 @@ class Loom_Linker {
 	}
 
 	/**
+	 * Build a regex matching a LOOM-inserted <a> tag for the given link record.
+	 *
+	 * When the target URL is known (target_post_id or target_url), the pattern
+	 * requires a matching href  -  otherwise removing "by anchor text only" could
+	 * strip a MANUAL link that happens to use the same anchor.
+	 *
+	 * @param string $anchor Anchor text (raw, will be preg-quoted).
+	 * @param array  $link   Link record from loom_links (target_post_id, target_url).
+	 * @return string        Regex pattern.
+	 */
+	private static function build_anchor_pattern( $anchor, $link = array() ) {
+		$escaped = preg_quote( $anchor, '/' );
+
+		$url = '';
+		$tid = intval( $link['target_post_id'] ?? 0 );
+		if ( $tid > 0 ) {
+			$url = get_permalink( $tid ) ?: '';
+		}
+		if ( empty( $url ) && ! empty( $link['target_url'] ) ) {
+			$url = $link['target_url'];
+		}
+
+		if ( ! empty( $url ) ) {
+			$url_re = preg_quote( untrailingslashit( $url ), '/' );
+			return '/<a\s[^>]*href=["\']' . $url_re . '\/?["\'][^>]*>(?:<[^>]*>)*' . $escaped . '(?:<\/[^>]*>)*<\/a>/i';
+		}
+
+		// Fallback: match by anchor only (legacy records without target data).
+		return '/<a\s[^>]*>(?:<[^>]*>)*' . $escaped . '(?:<\/[^>]*>)*<\/a>/i';
+	}
+
+	/**
 	 * AJAX: Auto-Podlinkuj  -  one-click: generate suggestions + auto-apply high/medium.
 	 * No user review needed. Used in Bulk mode and dashboard quick-link.
 	 */
@@ -264,7 +297,7 @@ class Loom_Linker {
 		// ─── Step 5: Validate ───
 		$suggestions = $result['suggestions'] ?? array();
 		$paragraphs  = Loom_Suggester::split_paragraphs( $source['clean_text'] );
-		$validated   = Loom_Suggester::validate_suggestions( $suggestions, $paragraphs, $post_id );
+		$validated   = Loom_Suggester::validate_suggestions( $suggestions, $paragraphs, $post_id, wp_list_pluck( $ranked, 'post_url' ) );
 		$analyzed    = Loom_Analyzer::enrich_suggestions( $validated, count( $paragraphs ) );
 
 		// ─── Step 6: Auto-filter -> high + medium only ───
@@ -283,7 +316,6 @@ class Loom_Linker {
 				'post_title'  => $source['post_title'],
 				'message'     => __( 'Brak sugestii o wystarczającym priorytecie.', 'loom' ),
 			) );
-			return;
 		}
 
 		// ─── Step 7: Auto-apply ───
@@ -311,6 +343,7 @@ class Loom_Linker {
 				Loom_DB::insert_link( array(
 					'source_post_id'      => $post_id,
 					'target_post_id'      => $target_id > 0 ? $target_id : 0,
+					'target_url'          => mb_substr( esc_url_raw( $url ), 0, 500 ),
 					'anchor_text'         => mb_substr( $anchor, 0, 500 ),
 					'link_position'       => $link['surfer_zone'] ?? 'middle',
 					'position_percent'    => intval( $link['position_percent'] ?? 50 ),
@@ -374,7 +407,7 @@ class Loom_Linker {
 		$lnk = Loom_DB::links_table();
 
 		$loom_links = $wpdb->get_results(
-			"SELECT id, source_post_id, anchor_text, target_post_id
+			"SELECT id, source_post_id, anchor_text, target_post_id, target_url
 			 FROM {$lnk} WHERE is_plugin_generated = 1
 			 ORDER BY source_post_id", ARRAY_A
 		);
@@ -406,11 +439,10 @@ class Loom_Linker {
 				$anchor = $link['anchor_text'];
 				if ( empty( $anchor ) ) continue;
 
-				$escaped = preg_quote( $anchor, '/' );
-				// Match <a ...>anchor</a> — also handles nested tags like <strong>anchor</strong>.
-				$pattern = '/<a\s[^>]*>(?:<[^>]*>)*' . $escaped . '(?:<\/[^>]*>)*<\/a>/i';
+				$pattern = self::build_anchor_pattern( $anchor, $link );
 				$new     = preg_replace( $pattern, $anchor, $content, 1, $count );
-				if ( $count > 0 ) { $content = $new; $removed++; }
+				// preg_replace() returns null on regex failure  -  never write null back.
+				if ( $new !== null && $count > 0 ) { $content = $new; $removed++; }
 			}
 
 			if ( $removed > 0 ) {
@@ -520,11 +552,10 @@ class Loom_Linker {
 
 		if ( $fix_type === 'remove' ) {
 			// Strip <a> tag, keep anchor text.
-			$escaped = preg_quote( $anchor, '/' );
-			$pattern = '/<a\s[^>]*>(?:<[^>]*>)*' . $escaped . '(?:<\/[^>]*>)*<\/a>/i';
+			$pattern = self::build_anchor_pattern( $anchor, $link );
 			$new_content = preg_replace( $pattern, $anchor, $content, 1, $count );
 
-			if ( $count > 0 ) {
+			if ( $new_content !== null && $count > 0 ) {
 				remove_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20 );
 				wp_update_post( array( 'ID' => $post_id, 'post_content' => $new_content ) );
 				add_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20, 3 );
@@ -551,10 +582,11 @@ class Loom_Linker {
 					$content, 1, $count
 				);
 			} else {
+				$new_content = null;
 				$count = 0;
 			}
 
-			if ( $count > 0 ) {
+			if ( $new_content !== null && $count > 0 ) {
 				remove_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20 );
 				wp_update_post( array( 'ID' => $post_id, 'post_content' => $new_content ) );
 				add_action( 'save_post', array( 'Loom_Scanner', 'on_save_post' ), 20, 3 );
