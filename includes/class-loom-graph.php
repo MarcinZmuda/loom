@@ -179,9 +179,10 @@ class Loom_Graph {
 			$dist[ $source ] = 0; $paths[ $source ] = 1;
 			$queue = array( $source ); $order = array();
 
-			// BFS forward pass.
-			while ( ! empty( $queue ) ) {
-				$v = array_shift( $queue );
+			// BFS forward pass (index pointer  -  array_shift() is O(n) per call).
+			$qh = 0;
+			while ( $qh < count( $queue ) ) {
+				$v = $queue[ $qh++ ];
 				$order[] = $v;
 				foreach ( self::$outlinks[ $v ] ?? array() as $w ) {
 					if ( $dist[ $w ] === -1 ) { $dist[ $w ] = $dist[ $v ] + 1; $queue[] = $w; }
@@ -233,8 +234,9 @@ class Loom_Graph {
 			$n = intval( $n );
 			if ( isset( $visited[ $n ] ) ) continue;
 			$cid++; $queue = array( $n ); $visited[ $n ] = true;
-			while ( ! empty( $queue ) ) {
-				$v = array_shift( $queue );
+			$qh = 0;
+			while ( $qh < count( $queue ) ) {
+				$v = $queue[ $qh++ ];
 				$comp[ $v ] = $cid;
 				foreach ( $adj[ $v ] ?? array() as $w ) {
 					if ( ! isset( $visited[ $w ] ) ) { $visited[ $w ] = true; $queue[] = $w; }
@@ -261,16 +263,19 @@ class Loom_Graph {
 		global $wpdb;
 		$table = Loom_DB::index_table();
 
-		// PageRank.
+		// PageRank  -  batched CASE update (per-row UPDATE was ~4N queries total).
 		$pr = self::pagerank();
-		foreach ( $pr as $pid => $rank ) {
-			$wpdb->update( $table, array( 'internal_pagerank' => round( $rank, 8 ) ), array( 'post_id' => $pid ) );
-		}
+		self::batch_update_column( 'internal_pagerank', array_map( function ( $v ) {
+			return round( $v, 8 );
+		}, $pr ) );
 
-		// Dead ends.
-		$wpdb->query( "UPDATE {$table} SET is_dead_end = 0" );
-		foreach ( self::dead_ends() as $pid ) {
-			$wpdb->update( $table, array( 'is_dead_end' => 1 ), array( 'post_id' => $pid ) );
+		// Dead ends  -  single query.
+		$de = array_map( 'intval', self::dead_ends() );
+		if ( empty( $de ) ) {
+			$wpdb->query( "UPDATE {$table} SET is_dead_end = 0" );
+		} else {
+			$de_str = implode( ',', $de );
+			$wpdb->query( "UPDATE {$table} SET is_dead_end = IF( post_id IN ({$de_str}), 1, 0 )" ); // phpcs:ignore -- IDs are intval'd.
 		}
 
 		// Betweenness + bridges (top 10%).
@@ -279,18 +284,46 @@ class Loom_Graph {
 		sort( $vals );
 		$p90  = ! empty( $vals ) ? $vals[ max( 0, intval( count( $vals ) * 0.9 ) ) ] : 0;
 
-		$wpdb->query( "UPDATE {$table} SET is_bridge = 0" );
+		self::batch_update_column( 'betweenness', $bw );
+		$bridges = array();
 		foreach ( $bw as $pid => $score ) {
-			$wpdb->update( $table, array(
-				'betweenness' => $score,
-				'is_bridge'   => ( $score >= $p90 && $p90 > 0 ) ? 1 : 0,
-			), array( 'post_id' => $pid ) );
+			if ( $score >= $p90 && $p90 > 0 ) $bridges[] = intval( $pid );
+		}
+		if ( empty( $bridges ) ) {
+			$wpdb->query( "UPDATE {$table} SET is_bridge = 0" );
+		} else {
+			$br_str = implode( ',', $bridges );
+			$wpdb->query( "UPDATE {$table} SET is_bridge = IF( post_id IN ({$br_str}), 1, 0 )" ); // phpcs:ignore -- IDs are intval'd.
 		}
 
 		// Weakly connected components.
-		$comps = self::components();
-		foreach ( $comps as $pid => $cid ) {
-			$wpdb->update( $table, array( 'component_id' => $cid ), array( 'post_id' => $pid ) );
+		self::batch_update_column( 'component_id', self::components() );
+	}
+
+	/**
+	 * Batched numeric column update via CASE WHEN (chunks of 200).
+	 *
+	 * Replaces per-row $wpdb->update() loops  -  on a 5k-page site analyze()
+	 * previously issued ~20k UPDATE queries.
+	 *
+	 * @param string           $column Column name (internal, not user input).
+	 * @param array<int,float> $values post_id => numeric value.
+	 */
+	private static function batch_update_column( $column, $values ) {
+		global $wpdb;
+		$table = Loom_DB::index_table();
+
+		foreach ( array_chunk( $values, 200, true ) as $chunk ) {
+			$cases = '';
+			$ids   = array();
+			foreach ( $chunk as $pid => $val ) {
+				$pid     = intval( $pid );
+				$ids[]   = $pid;
+				$cases  .= ' WHEN ' . $pid . ' THEN ' . floatval( $val );
+			}
+			$ids_str = implode( ',', $ids );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- IDs/values cast to int/float above, column internal.
+			$wpdb->query( "UPDATE {$table} SET {$column} = CASE post_id{$cases} END WHERE post_id IN ({$ids_str})" );
 		}
 	}
 

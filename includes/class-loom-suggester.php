@@ -75,13 +75,27 @@ class Loom_Suggester {
 		$para_embeddings = self::get_paragraph_embeddings( $paragraphs, $api_key, 5 );
 
 		if ( ! empty( $para_embeddings ) ) {
+			// Batch-load target embeddings in ONE query (get_index_row() per target
+			// would pull the full row incl. clean_text longtext, 30x).
+			global $wpdb;
+			$sim_ids = array_filter( array_map( 'intval', wp_list_pluck( $similar, 'post_id' ) ) );
+			$emb_map = array();
+			if ( ! empty( $sim_ids ) ) {
+				$ids_str  = implode( ',', $sim_ids );
+				$emb_rows = $wpdb->get_results(
+					'SELECT post_id, embedding FROM ' . Loom_DB::index_table() . " WHERE post_id IN ({$ids_str})",
+					ARRAY_A
+				); // phpcs:ignore -- IDs are intval'd above.
+				foreach ( $emb_rows as $er ) {
+					$emb_map[ intval( $er['post_id'] ) ] = $er['embedding'];
+				}
+			}
+
 			foreach ( $similar as &$target ) {
 				$tid = intval( $target['post_id'] ?? 0 );
 				if ( $tid <= 0 ) continue;
 
-				// Load target embedding from DB (unset during similarity search).
-				$tr = Loom_DB::get_index_row( $tid );
-				$target_emb = $tr ? json_decode( $tr['embedding'] ?? '[]', true ) : null;
+				$target_emb = isset( $emb_map[ $tid ] ) ? json_decode( $emb_map[ $tid ], true ) : null;
 				if ( empty( $target_emb ) ) continue;
 
 				$best_para = 0;
@@ -151,7 +165,7 @@ class Loom_Suggester {
 		// Step 7: Validate suggestions against clean_text paragraphs.
 		$suggestions = $result['suggestions'] ?? array();
 		$paragraphs  = self::split_paragraphs( $source['clean_text'] );
-		$validated   = self::validate_suggestions( $suggestions, $paragraphs, $post_id );
+		$validated   = self::validate_suggestions( $suggestions, $paragraphs, $post_id, wp_list_pluck( $ranked, 'post_url' ) );
 
 		// Step 7b: Cross-validate anchors exist in post_content (LOGIC-4 fix).
 		$post = get_post( $post_id );
@@ -519,10 +533,22 @@ PROMPT;
 
 	/**
 	 * Validate GPT suggestions against actual content.
+	 *
+	 * @param array      $suggestions  Raw suggestions from GPT.
+	 * @param array      $paragraphs   Paragraphs from split_paragraphs().
+	 * @param int        $post_id      Source post ID.
+	 * @param array|null $allowed_urls URLs of the targets shown to GPT. When given,
+	 *                                 any URL outside the list is rejected (guards
+	 *                                 against hallucinated/injected targets).
 	 */
-	public static function validate_suggestions( $suggestions, $paragraphs, $post_id ) {
+	public static function validate_suggestions( $suggestions, $paragraphs, $post_id, $allowed_urls = null ) {
 		$valid = array();
 		$used_urls = array();
+
+		$allowed_normalized = null;
+		if ( is_array( $allowed_urls ) ) {
+			$allowed_normalized = array_map( 'untrailingslashit', array_filter( array_map( 'strval', $allowed_urls ) ) );
+		}
 
 		foreach ( $suggestions as $s ) {
 			$para_num = intval( $s['paragraph_number'] ?? 0 );
@@ -544,8 +570,14 @@ PROMPT;
 				continue;
 			}
 
+			// Check URL is one of the targets GPT was actually shown.
+			if ( $allowed_normalized !== null && ! in_array( untrailingslashit( $url ), $allowed_normalized, true ) ) {
+				continue;
+			}
+
 			// Check anchor cannibalization  -  add warning but don't block.
 			$target_id = url_to_postid( $url );
+			$s['target_post_id'] = $target_id; // Exposed to the UI (reject button needs it).
 			$s['cannibalization'] = null;
 			if ( $target_id > 0 ) {
 				// Rejection check.
@@ -583,7 +615,7 @@ PROMPT;
 		// Pick top N longest paragraphs (short ones aren't worth embedding).
 		$indexed = array();
 		foreach ( $paragraphs as $i => $p ) {
-			$wc = str_word_count( $p );
+			$wc = Loom_Keywords::count_words( $p );
 			if ( $wc >= 20 ) {
 				$indexed[] = array( 'index' => $i, 'text' => $p, 'wc' => $wc );
 			}

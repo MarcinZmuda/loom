@@ -53,11 +53,12 @@ class Loom_OpenAI {
 	/**
 	 * Generate embeddings for multiple texts in a SINGLE API call.
 	 *
-	 * @param array  $texts   Array of text strings.
-	 * @param string $api_key API key.
+	 * @param array  $texts     Array of text strings.
+	 * @param string $api_key   API key.
+	 * @param int    $max_words Per-text word cap (500 for paragraphs, 2000 for full posts).
 	 * @return array|WP_Error  Array of vectors (same order as input) or error.
 	 */
-	public static function get_embeddings_batch( $texts, $api_key = '' ) {
+	public static function get_embeddings_batch( $texts, $api_key = '', $max_words = 500 ) {
 		if ( empty( $api_key ) ) {
 			$api_key = Loom_DB::get_api_key();
 		}
@@ -67,8 +68,8 @@ class Loom_OpenAI {
 		$inputs = array();
 		foreach ( $texts as $text ) {
 			$words = explode( ' ', $text );
-			if ( count( $words ) > 500 ) {
-				$text = implode( ' ', array_slice( $words, 0, 500 ) );
+			if ( count( $words ) > $max_words ) {
+				$text = implode( ' ', array_slice( $words, 0, $max_words ) );
 			}
 			$inputs[] = $text;
 		}
@@ -255,23 +256,32 @@ class Loom_OpenAI {
 		$generated   = 0;
 		$last_error  = '';
 
+		// ONE batch API call for the whole chunk (was: 1 call per post, each with
+		// its own retry/backoff  -  5x slower and more prone to PHP timeouts).
+		$inputs = array();
 		foreach ( $posts as $p ) {
-			$title = $p['post_title'];
-			$input = $title . ' | ' . $title . ' | ' . $title
-			       . ' | ' . mb_substr( $p['clean_text'], 0, 2500 );
-			$vector = self::get_embedding( $input, $api_key );
+			$title    = $p['post_title'];
+			$inputs[] = $title . ' | ' . $title . ' | ' . $title
+			          . ' | ' . mb_substr( $p['clean_text'], 0, 2500 );
+		}
 
-			if ( is_wp_error( $vector ) ) {
-				$last_error = $vector->get_error_message();
-				break; // Stop batch on first error — don't burn API calls.
+		$vectors = self::get_embeddings_batch( $inputs, $api_key, 2000 );
+
+		if ( is_wp_error( $vectors ) ) {
+			$last_error = $vectors->get_error_message();
+		} else {
+			foreach ( $posts as $i => $p ) {
+				if ( empty( $vectors[ $i ] ) || ! is_array( $vectors[ $i ] ) ) {
+					$last_error = __( 'Brak embeddingu w odpowiedzi.', 'loom' );
+					continue;
+				}
+				$wpdb->update( $table, array(
+					'embedding'       => wp_json_encode( $vectors[ $i ] ),
+					'embedding_model' => self::EMBED_MODEL,
+					'last_embedding'  => current_time( 'mysql' ),
+				), array( 'post_id' => $p['post_id'] ) );
+				$generated++;
 			}
-
-			$wpdb->update( $table, array(
-				'embedding'       => wp_json_encode( $vector ),
-				'embedding_model' => self::EMBED_MODEL,
-				'last_embedding'  => current_time( 'mysql' ),
-			), array( 'post_id' => $p['post_id'] ) );
-			$generated++;
 		}
 
 		$still_remaining = $total_missing - $generated;

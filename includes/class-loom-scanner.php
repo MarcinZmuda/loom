@@ -15,7 +15,10 @@ class Loom_Scanner {
 		$offset     = absint( $_POST['offset'] ?? 0 );
 		$batch_size = 20;
 		$settings   = Loom_DB::get_settings();
-		$types      = $settings['post_types'];
+		$types      = (array) $settings['post_types'];
+		if ( empty( $types ) ) {
+			$types = array( 'post', 'page' ); // Guard: empty IN () would be a SQL error.
+		}
 		$placeholders = implode( ',', array_fill( 0, count( $types ), '%s' ) );
 
 		global $wpdb;
@@ -82,7 +85,7 @@ class Loom_Scanner {
 		}
 		$clean_text = wp_strip_all_tags( $rendered );
 		$clean_text = preg_replace( '/\s+/', ' ', trim( $clean_text ) );
-		$word_count = str_word_count( $clean_text );
+		$word_count = Loom_Keywords::count_words( $clean_text );
 
 		// Save to index.
 		Loom_DB::upsert_index( array(
@@ -160,7 +163,14 @@ class Loom_Scanner {
 				$is_known_url = false;
 				$url_path = trim( wp_parse_url( $href, PHP_URL_PATH ) ?: '', '/' );
 
-				if ( ! empty( $url_path ) ) {
+				// Homepage / site root: empty path means the link resolved to home_url('/').
+				// url_to_postid() does not resolve the front page, so without this check
+				// every link to the homepage would be flagged as broken.
+				if ( $url_path === '' ) {
+					$is_known_url = true;
+				}
+
+				if ( ! $is_known_url && ! empty( $url_path ) ) {
 					// 1. Category by slug (handles clean URLs like /technologie).
 					if ( get_category_by_slug( $url_path ) ) $is_known_url = true;
 					if ( ! $is_known_url && get_category_by_slug( basename( $url_path ) ) ) $is_known_url = true;
@@ -198,12 +208,7 @@ class Loom_Scanner {
 						}
 					}
 
-					// 7. Homepage / blog page.
-					if ( ! $is_known_url && ( $url_path === '' || $href === home_url( '/' ) || $href === home_url() ) ) {
-						$is_known_url = true;
-					}
-
-					// 8. Date archives (/2024/, /2024/01/).
+					// 7. Date archives (/2024/, /2024/01/).
 					if ( ! $is_known_url && preg_match( '#^\d{4}(/\d{2})?(/\d{2})?$#', $url_path ) ) {
 						$is_known_url = true;
 					}
@@ -259,6 +264,8 @@ class Loom_Scanner {
 		if ( ! in_array( $post->post_type, $settings['post_types'], true ) ) return;
 
 		// v2.4: Publish-time orphan alert for new posts (or posts with 0 IN).
+		// Queued in a transient and rendered on the NEXT admin page load  -  Gutenberg
+		// saves via REST, so a notice registered during save_post would never display.
 		if ( ! $update || ! get_post_meta( $post_id, '_loom_content_hash', true ) ) {
 			global $wpdb;
 			$idx = Loom_DB::index_table();
@@ -266,21 +273,9 @@ class Loom_Scanner {
 				"SELECT incoming_links_count FROM {$idx} WHERE post_id = %d", $post_id
 			) );
 			if ( $in === 0 ) {
-				set_transient( 'loom_orphan_alert_' . $post_id, true, 60 );
-				add_action( 'admin_notices', function() use ( $post_id ) {
-					if ( get_transient( 'loom_orphan_alert_' . $post_id ) ) {
-						$title = get_the_title( $post_id );
-						echo '<div class="notice notice-warning is-dismissible"><p>';
-						echo '<strong>🕸️ LOOM:</strong> ';
-						printf(
-							/* translators: %s: post title */
-							esc_html__( '„%s" nie ma linków przychodzących (orphan). Otwórz LOOM aby wygenerować sugestie linkowania.', 'loom' ),
-							esc_html( $title )
-						);
-						echo '</p></div>';
-						delete_transient( 'loom_orphan_alert_' . $post_id );
-					}
-				} );
+				$queue   = get_transient( 'loom_orphan_alerts' ) ?: array();
+				$queue[] = $post_id;
+				set_transient( 'loom_orphan_alerts', array_unique( $queue ), 5 * MINUTE_IN_SECONDS );
 			}
 		}
 

@@ -301,6 +301,14 @@ class Loom_Settings {
 			$settings['rescan_on_save']  = ! empty( $_POST['rescan_on_save'] );
 			$settings['admin_notices']   = ! empty( $_POST['admin_notices'] );
 
+			// Content language for GPT prompts (sent by the dashboard settings tab).
+			if ( isset( $_POST['language'] ) ) {
+				$lang = sanitize_text_field( wp_unslash( $_POST['language'] ) );
+				if ( in_array( $lang, array( 'pl', 'en', 'de' ), true ) ) {
+					$settings['language'] = $lang;
+				}
+			}
+
 			// Weights  -  sanitize + normalize to sum 1.0.
 			$weight_keys = array( 'weight_semantic', 'weight_orphan', 'weight_depth', 'weight_tier', 'weight_cluster', 'weight_equity', 'weight_graph', 'weight_money', 'weight_gsc', 'weight_authority', 'weight_placement' );
 			$weight_sum  = 0;

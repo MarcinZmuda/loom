@@ -155,7 +155,7 @@
 			}
 			html += '  </div>';
 			html += '  <div class="loom-suggestion-reason">' + escHtml(s.reason) + '</div>';
-			html += '  <button type="button" class="loom-reject-btn" data-post-id="' + postId + '" data-target-url="' + escHtml(s.target_url) + '" data-anchor="' + escHtml(s.anchor_text) + '" title="Odrzuć i zapamiętaj">🚫</button>';
+			html += '  <button type="button" class="loom-reject-btn" data-post-id="' + postId + '" data-target-id="' + (parseInt(s.target_post_id) || 0) + '" data-target-url="' + escHtml(s.target_url) + '" data-anchor="' + escHtml(s.anchor_text) + '" title="Odrzuć i zapamiętaj">🚫</button>';
 			html += '</div>';
 		});
 
@@ -448,7 +448,7 @@
 			type: 'POST',
 			data: { action: 'loom_structural_suggestions', nonce: loom_ajax.nonce },
 			success: function(res) {
-				$btn.hide();
+				$btn.prop('disabled', false).text('📋 Sugestie strukturalne');
 				if (!res.success || !res.data.suggestions.length) {
 					$panel.html('<p class="loom-muted">Brak sugestii strukturalnych  -  graf wygląda zdrowo.</p>');
 					return;
@@ -458,16 +458,16 @@
 					html += '<div class="loom-struct-item">';
 					html += '<span class="loom-struct-icon">' + escHtml(s.icon) + '</span>';
 					html += '<div class="loom-struct-body">';
-					html += '<div class="loom-struct-msg">' + escHtml(s.message) + '</div>';
-					html += '<div class="loom-struct-action">' + escHtml(s.action) + '</div>';
+					html += '<div class="loom-struct-msg"><strong>' + escHtml(s.title) + '</strong></div>';
+					html += '<div class="loom-struct-action">' + escHtml(s.reason) + '</div>';
 					html += '</div>';
-					html += '<span class="loom-struct-prio loom-prio-' + s.priority + '">' + s.priority + '</span>';
+					html += '<span class="loom-struct-prio loom-badge loom-prio-' + escHtml(s.priority) + '">' + escHtml(s.priority) + '</span>';
 					html += '</div>';
 				});
 				html += '</div>';
 				$panel.html(html);
 			},
-			error: function() { $btn.prop('disabled', false).text('📋 Pokaż sugestie'); }
+			error: function() { $btn.prop('disabled', false).text('📋 Sugestie strukturalne'); }
 		});
 	});
 
@@ -589,9 +589,6 @@
 	   ======================================================================= */
 	$(document).on('click', '.loom-reject-btn', function() {
 		var $btn = $(this);
-		var targetUrl = $btn.data('target-url');
-		var targetId = 0;
-		// Try to extract target_id from URL or pass 0
 		$.ajax({
 			url: loom_ajax.ajaxurl,
 			type: 'POST',
@@ -600,6 +597,7 @@
 				nonce: loom_ajax.nonce,
 				post_id: $btn.data('post-id'),
 				target_id: $btn.data('target-id') || 0,
+				target_url: $btn.data('target-url') || '',
 				anchor_text: $btn.data('anchor')
 			},
 			success: function() {
@@ -1513,6 +1511,8 @@
 				btn.text(newState ? '⭐' : '☆');
 				btn.toggleClass('active', !!newState);
 				btn.attr('title', newState ? 'Money page  -  kliknij aby usunąć' : 'Oznacz jako money page');
+			} else {
+				alert(res.data || 'Błąd zapisu money page.');
 			}
 		});
 	});
@@ -1541,6 +1541,8 @@
 				row.css('opacity', newState ? '.6' : '1');
 				// Reload page to update counts.
 				if (newState) { setTimeout(function() { location.reload(); }, 500); }
+			} else {
+				alert(res.data || 'Błąd zapisu strony strukturalnej.');
 			}
 		});
 	});
@@ -1572,14 +1574,14 @@
 
 			// Build results popup.
 			var html = '<div style="max-width:600px;max-height:400px;overflow-y:auto;padding:16px">';
-			html += '<h3 style="margin:0 0 8px;font-size:14px">🔍 Reverse Rescue: ' + d.target_title + '</h3>';
+			html += '<h3 style="margin:0 0 8px;font-size:14px">🔍 Reverse Rescue: ' + escHtml(d.target_title) + '</h3>';
 			html += '<p style="font-size:11px;color:#64748b;margin:0 0 12px">Te artykuły mogą dodać link DO tej strony' + (d.adaptive ? ' (adaptacyjny próg: ' + d.threshold.toFixed(2) + ')' : '') + '</p>';
 
 			candidates.forEach(function(c) {
 				var linked = c.already_linked;
 				html += '<div style="padding:8px 10px;background:' + (linked ? '#f9fafb' : '#f0fdfa') + ';border:1px solid ' + (linked ? '#e5e7eb' : '#99f6e4') + ';border-radius:8px;margin-bottom:4px;font-size:12px">';
 				html += '<div style="display:flex;justify-content:space-between;align-items:center">';
-				html += '<strong>' + c.source_title + '</strong>';
+				html += '<strong>' + escHtml(c.source_title) + '</strong>';
 				html += '<span style="font-size:10px;color:' + (linked ? '#94a3b8' : '#0d9488') + ';font-weight:700">' + (linked ? '✅ Już linkuje' : 'sim: ' + c.similarity) + '</span>';
 				html += '</div>';
 				html += '<div style="font-size:10px;color:#94a3b8;margin-top:2px">OUT: ' + c.source_out + ' · PR: ' + (c.source_pr * 100).toFixed(1) + (c.source_is_money ? ' · ⭐ Money' : '') + '</div>';
@@ -1629,8 +1631,9 @@
 				html += '<div style="padding:8px 10px;background:#fef2f2;border-radius:8px;margin-bottom:6px"><strong style="color:#dc2626">🔴 Kanibalizacja keywords (' + c.kw_cannibal + ')</strong>';
 				d.keyword_cannibalization.forEach(function(k) {
 					html += '<div style="margin-top:4px;padding:4px 8px;background:white;border-radius:5px;font-size:10px">';
-					html += '<strong>"' + k.query + '"</strong> — ';
-					k.pages.forEach(function(p) { html += p.title + ' (poz: ' + p.position.toFixed(1) + '), '; });
+					// escHtml everywhere: GSC queries are EXTERNAL data (real Google searches).
+					html += '<strong>"' + escHtml(k.query) + '"</strong> — ';
+					k.pages.forEach(function(p) { html += escHtml(p.title) + ' (poz: ' + p.position.toFixed(1) + '), '; });
 					html += '</div>';
 				});
 				html += '</div>';
@@ -1640,7 +1643,7 @@
 			if (c.anchor_cannibal > 0) {
 				html += '<div style="padding:8px 10px;background:#fef3c7;border-radius:8px;margin-bottom:6px"><strong style="color:#92400e">🟡 Kanibalizacja anchorów (' + c.anchor_cannibal + ')</strong>';
 				d.anchor_cannibalization.slice(0, 5).forEach(function(a) {
-					html += '<div style="margin-top:4px;font-size:10px">"' + a.anchor_text + '" → ' + a.target_count + ' stron: ' + a.target_titles + '</div>';
+					html += '<div style="margin-top:4px;font-size:10px">"' + escHtml(a.anchor_text) + '" → ' + parseInt(a.target_count) + ' stron: ' + escHtml(a.target_titles) + '</div>';
 				});
 				html += '</div>';
 			}
@@ -1649,7 +1652,7 @@
 			if (c.duplicates > 0) {
 				html += '<div style="padding:8px 10px;background:#f0fdfa;border-radius:8px;margin-bottom:6px"><strong style="color:#0d9488">🔗 Duplikaty linków (' + c.duplicates + ')</strong>';
 				d.duplicate_links.slice(0, 5).forEach(function(dup) {
-					html += '<div style="margin-top:4px;font-size:10px">' + dup.source_title + ' → ' + dup.target_title + ' (' + dup.link_count + '× anchory: ' + dup.anchors + ')</div>';
+					html += '<div style="margin-top:4px;font-size:10px">' + escHtml(dup.source_title) + ' → ' + escHtml(dup.target_title) + ' (' + parseInt(dup.link_count) + '× anchory: ' + escHtml(dup.anchors) + ')</div>';
 				});
 				html += '</div>';
 			}
@@ -1658,7 +1661,7 @@
 			if (c.overlinked > 0) {
 				html += '<div style="padding:8px 10px;background:#fef2f2;border-radius:8px;margin-bottom:6px"><strong style="color:#dc2626">⚠️ Overlinked (' + c.overlinked + ')</strong>';
 				d.overlinked_pages.slice(0, 5).forEach(function(p) {
-					html += '<div style="margin-top:4px;font-size:10px">' + p.post_title + ' — ' + p.outgoing_links_count + ' OUT</div>';
+					html += '<div style="margin-top:4px;font-size:10px">' + escHtml(p.post_title) + ' — ' + parseInt(p.outgoing_links_count) + ' OUT</div>';
 				});
 				html += '</div>';
 			}
@@ -1692,12 +1695,12 @@
 				d.clusters.forEach(function(cl) {
 					var ok = cl.issues.length === 0;
 					html += '<div style="padding:6px 10px;background:' + (ok ? '#dcfce7' : '#fef2f2') + ';border-radius:8px;margin-bottom:4px">';
-					html += '<strong>' + cl.cluster_name + '</strong> (pillar: ' + cl.pillar + ', ' + cl.members + ' artykułów)';
+					html += '<strong>' + escHtml(cl.cluster_name) + '</strong> (pillar: ' + escHtml(cl.pillar) + ', ' + parseInt(cl.members) + ' artykułów)';
 					if (ok) { html += ' ✅'; }
 					else {
 						cl.issues.forEach(function(iss) {
 							html += '<div style="font-size:10px;margin-top:2px;color:#dc2626">';
-							html += iss.type === 'pillar_missing' ? '↗ Pillar nie linkuje do: ' + iss.to : '↙ Brak linka do pillara z: ' + iss.from;
+							html += iss.type === 'pillar_missing' ? '↗ Pillar nie linkuje do: ' + escHtml(iss.to) : '↙ Brak linka do pillara z: ' + escHtml(iss.from);
 							html += '</div>';
 						});
 					}

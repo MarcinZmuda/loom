@@ -4,7 +4,7 @@ Tags: internal linking, seo, ai, openai, pagerank, google search console
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.4.0
+Stable tag: 2.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -77,6 +77,36 @@ Yes. Settings > Danger Zone > Remove all LOOM links.
 No. Zero frontend scripts. Admin panel only.
 
 == Changelog ==
+
+= 2.4.1 =
+
+**Fixed:**
+* Orphan trend chart never displayed (query hit a non-existent table name)
+* "Reject suggestion" feedback loop stored target ID 0 — rejections were never filtered out
+* Links to the homepage were flagged as broken
+* Money-page equity-leak penalty was a no-op (score clamped at 0)
+* Cluster-links batch cache fell back to per-target queries when the cached value was 0 (N+1)
+* Dashboard language selector was never saved
+* Money/structural toggles silently failed for editors (capability mismatch, now edit_others_posts + error alert)
+* GSC domain properties (sc-domain:) got an invalid trailing slash
+* LOOM-inserted links were recorded without target_url (broke the broken-link "Replace" fix)
+* "Remove all LOOM links" could strip a manual link using the same anchor text (href now matched)
+* preg_replace() null result could blank post content on regex failure
+* Publish-time orphan alert never displayed in Gutenberg (queued for next page load now)
+* Word count was inflated for Polish/German text (multibyte-safe counting)
+* Structural suggestions endpoint had no UI and mismatched field names
+* XSS hardening: GSC queries, anchor texts and post titles are now escaped in Diagnostics/Rescue/Silo panels
+
+**Performance:**
+* Embeddings generated via ONE batch API call per chunk (was 1 call per post)
+* Graph analyze() uses batched CASE updates (was ~4 queries per page)
+* Link map, paragraph matching and prompt building no longer load full rows with longtext per node/target
+* Keyword extraction no longer runs full dashboard aggregations per post
+* Admin orphan notice uses a cached count instead of full stats on every page load
+* GSC query sync stops safely before PHP timeout (partial results logged)
+
+**Privacy:**
+* Removed Google Fonts import from admin CSS (GDPR — no admin IPs sent to Google); system font stack
 
 = 2.4.0 =
 
