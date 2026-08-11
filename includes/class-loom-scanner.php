@@ -103,6 +103,11 @@ class Loom_Scanner {
 
 		// Extract keywords (layer 1+2 only  -  fast, no API cost).
 		Loom_Keywords::extract( $post->ID, false );
+	
+		// A rescan rewrites this post's links, so its own counters are stale too.
+		// Without this the dashboard undercounts orphans: is_orphan keeps whatever
+		// the index row was created with, even though incoming_links_count is right.
+		Loom_DB::recalc_counters_for_post( (int) $post->ID );
 	}
 
 	/**
@@ -111,6 +116,17 @@ class Loom_Scanner {
 	private static $url_cache = array();
 
 	private static function parse_links( $post_id, $html ) {
+		global $wpdb;
+
+		// Every target this post linked to is about to lose that link, and every
+		// target it links to now is about to gain one. Both sides need their
+		// incoming counters refreshed, otherwise is_orphan stays stale on targets.
+		$links_table = Loom_DB::links_table();
+		$affected    = $wpdb->get_col( $wpdb->prepare(
+			"SELECT DISTINCT target_post_id FROM {$links_table} WHERE source_post_id = %d",
+			$post_id
+		) );
+
 		// Clear existing links from this source.
 		Loom_DB::delete_links_for_post( $post_id );
 
@@ -152,6 +168,10 @@ class Loom_Scanner {
 				self::$url_cache[ $href ] = url_to_postid( $href );
 			}
 			$target_id   = self::$url_cache[ $href ];
+
+			if ( $target_id > 0 ) {
+				$affected[] = $target_id;
+			}
 			$anchor_text = trim( $a->textContent );
 			$rel         = $a->getAttribute( 'rel' );
 			$is_nofollow = strpos( $rel, 'nofollow' ) !== false ? 1 : 0;
@@ -249,6 +269,16 @@ class Loom_Scanner {
 				'is_broken'         => $is_broken,
 				'is_nofollow'       => $is_nofollow,
 			) );
+		}
+	
+		// Refresh incoming counters on every target touched by this rescan.
+		// recalc_counters_for_post() recomputes both directions from loom_links,
+		// so calling it on the source alone left is_orphan wrong on the targets.
+		$affected = array_unique( array_filter( array_map( 'intval', $affected ) ) );
+		foreach ( $affected as $affected_id ) {
+			if ( $affected_id !== (int) $post_id ) {
+				Loom_DB::recalc_counters_for_post( $affected_id );
+			}
 		}
 	}
 
