@@ -3,6 +3,12 @@
 All notable changes to LOOM are documented in this file.
 Full per-version details (including 2.3.x and 2.4.0) live in `readme.txt`.
 
+## [2.4.2]  -  2026-09-21
+
+### Fixed
+- Anchors unrelated to the link target. The pipeline pairs source and target by embedding similarity, then asks the model for an anchor from the source text  -  nothing required that anchor to describe the target. `validate_suggestions()` now drops a suggestion unless the anchor shares at least one word stem with the target title or slug. Stems (first 6 characters, diacritics folded, stopwords removed) instead of literal n-grams, so inflected forms still match. Known limitation: homograph collisions still pass
+- Dashboard undercounted orphans after a rescan. `scan_single_post()` never recalculated counters for the scanned post, and `parse_links()` re-inserted links without recalculating the targets that gained or lost one. Both sides are now recalculated. Run a full rescan after updating to correct existing `is_orphan` flags
+
 ## [2.4.1]  -  2026-07-07
 
 ### Fixed
