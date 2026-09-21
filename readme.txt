@@ -4,7 +4,7 @@ Tags: internal linking, seo, ai, openai, pagerank, google search console
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.4.1
+Stable tag: 2.4.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -77,6 +77,12 @@ Yes. Settings > Danger Zone > Remove all LOOM links.
 No. Zero frontend scripts. Admin panel only.
 
 == Changelog ==
+
+= 2.4.2 =
+
+**Fixed:**
+* Anchors unrelated to the link target: the AI picked an anchor from the source text and nothing required it to describe the target page. Suggestions are now dropped unless the anchor shares at least one word stem with the target title or slug (stems, not literal words, so inflected languages like Polish keep working)
+* Orphan count on the dashboard was too low after a rescan: scanning a post never recalculated its own counters, and re-parsing links did not recalculate the targets that gained or lost a link. Run a full rescan after updating to correct existing data
 
 = 2.4.1 =
 
